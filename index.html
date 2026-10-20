@@ -62,6 +62,7 @@
   select,input[type=text]{background:var(--panel2);color:var(--txt);border:1px solid var(--line);padding:10px;border-radius:8px;font-size:.85rem;}
   input[type=text]{flex:1;min-width:140px;}
   .note{color:var(--mut);font-size:.72rem;margin-top:14px;line-height:1.6;border-top:1px solid var(--line);padding-top:12px;} .note b{color:#bbb;}
+.multi-rush-card{grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.multi-rush-card .card__title{flex-basis:100%}.file-pick{background:var(--panel2);border:1px solid var(--line);padding:9px 14px;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:700}.muted{color:var(--mut);font-size:.82rem}.weight-controls{margin:18px 0 8px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}.weight-controls h3{font-size:.72rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--acc);margin:0 0 12px}.weight-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}@media(max-width:700px){.weight-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -102,6 +103,14 @@
   </div>
 </div>
 
+<div class="card multi-rush-card">
+  <div class="card__title">Match multi-rushs</div>
+  <p class="sub" style="margin:8px 0 12px">Ajoute plusieurs frames pour optimiser le match sur l’ensemble des rushs.</p>
+  <label class="file-pick" for="rushFiles">＋ Ajouter des rushs</label>
+  <input id="rushFiles" type="file" accept="image/*" multiple hidden>
+  <span id="rushCount" class="muted">Aucun rush additionnel</span>
+</div>
+
 <div class="descore" id="deBox">
   <div class="descore__num" id="deNum">—</div>
   <div class="descore__txt" id="deTxt"><b>Score de match ΔE (CIEDE2000)</b><br>Charge une référence ET une frame de rush pour mesurer la fidélité du look gradé vs la référence.</div>
@@ -118,6 +127,15 @@
   <div class="ctl"><label>Chaleur (R/B) <span id="vWarm">auto</span></label><input type="range" id="warm" min="-100" max="100" value="0"></div>
   <div class="ctl"><label>Crush des noirs <span id="vCrush">auto</span></label><input type="range" id="crush" min="0" max="100" value="50"></div>
   <div class="ctl"><label>Contraste <span id="vCon">auto</span></label><input type="range" id="con" min="50" max="150" value="100"></div>
+
+  <div class="weight-controls" aria-labelledby="weightTitle">
+    <h3 id="weightTitle">Importance des zones pour l’auto-match</h3>
+    <div class="weight-grid">
+      <div class="ctl"><label>Tons chair <span id="vWskin">3.5</span></label><input type="range" id="wSkin" min="0" max="5" step="0.1" value="3.5"></div>
+      <div class="ctl"><label>Zones détaillées <span id="vWdetail">1.6</span></label><input type="range" id="wDetail" min="0" max="5" step="0.1" value="1.6"></div>
+      <div class="ctl"><label>Extrêmes <span id="vWextreme">0.35</span></label><input type="range" id="wExtreme" min="0" max="5" step="0.05" value="0.35"></div>
+    </div>
+  </div>
 
   <div class="zgrid">
     <div>
@@ -158,7 +176,7 @@
 
 <script>
 const $=id=>document.getElementById(id);
-let refStats=null,lut=null,prevImg=null;
+let refStats=null,lut=null,prevImg=null,rushImgs=[];
 
 // ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
 function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
@@ -217,6 +235,16 @@ function loadImageFile(f,cb){
   img.onerror=()=>{URL.revokeObjectURL(url);alert('⚠ Impossible de décoder cette image.');};
   img.src=url;
 }
+function addRushFiles(files){
+  const list=Array.from(files||[]).filter(f=>f.type&&f.type.startsWith('image/'));
+  let pending=list.length;if(!pending)return;
+  list.forEach(f=>loadImageFile(f,(img,url)=>{rushImgs.push({img,url});pending--;if(!pending)updateRushCount();}));
+}
+function updateRushCount(){
+  const n=rushImgs.length;
+  $('rushCount').textContent=n?(n+' rush'+(n>1?'s':'')+' inclus dans le match'):'Aucun rush additionnel';
+}
+
 function setupDrop(dropId,cb){
   const d=$(dropId);
   d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('over');});
@@ -253,27 +281,24 @@ function zoneWarmth(sr,sb,count,globalB){
 function analyze(img){
   const {data:d,n}=sampleImg(img);
   const lum=new Float32Array(n),rC=new Float32Array(n),gC=new Float32Array(n),bC=new Float32Array(n);
-  let satSum=0,weightSum=0;
-  const weights=new Float32Array(n);
+  let satSum=0;
   for(let i=0;i<n;i++){
     const r=srgb2lin(d[i*4]/255),g=srgb2lin(d[i*4+1]/255),b=srgb2lin(d[i*4+2]/255);
     rC[i]=r;gC[i]=g;bC[i]=b;
     lum[i]=0.2126*r+0.7152*g+0.0722*b;
-    const mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx>1e-5?(mx-mn)/mx:0;
-    const lab=rgb2lab(r,g,b),hue=(Math.atan2(lab[2],lab[1])*180/Math.PI+360)%360,chroma=Math.hypot(lab[1],lab[2]);
-    let w=1;if(hue>=10&&hue<=40&&chroma>=12&&chroma<=55)w*=3.5;else if(lum[i]>=.12&&lum[i]<=.88)w*=1.6;if(lum[i]<.05||lum[i]>.95)w*=.35;
-    weights[i]=w;satSum+=sat*w;weightSum+=w;
+    const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+    satSum+=mx>1e-5?(mx-mn)/mx:0;
   }
   const sorted=lum.slice().sort();
   const p=f=>sorted[clamp(Math.floor(f*(n-1)),0,n-1)];
-  const meanCh=a=>{let s=0;for(let i=0;i<n;i++)s+=a[i]*weights[i];return s/Math.max(weightSum,1e-9);};
+  const meanCh=a=>{let s=0;for(let i=0;i<n;i++)s+=a[i];return s/n;};
   const mr=meanCh(rC),mg=meanCh(gC),mb=meanCh(bC);
   let sLoR=0,sLoB=0,sHiR=0,sHiB=0,cLo=0,cHi=0;
   const tLo=p(0.35),tHi=p(0.65);
   for(let i=0;i<n;i++){if(lum[i]<tLo){sLoR+=rC[i];sLoB+=bC[i];cLo++;}else if(lum[i]>tHi){sHiR+=rC[i];sHiB+=bC[i];cHi++;}}
   return {
     p1:p(0.01),p5:p(0.05),p25:p(0.25),p50:p(0.50),p75:p(0.75),p95:p(0.95),p99:p(0.99),
-    sat:satSum/Math.max(weightSum,1e-9),
+    sat:satSum/n,
     warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
     warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
     meanR:mr,meanG:mg,meanB:mb
@@ -458,6 +483,9 @@ function syncLabels(){
   $('vWarm').textContent=$('warm').value==0?'auto':$('warm').value;
   $('vCrush').textContent=$('crush').value==50?'auto':$('crush').value;
   $('vCon').textContent=$('con').value==100?'auto':$('con').value+'%';
+  $('vWskin').textContent=(+$('wSkin').value).toFixed(1);
+  $('vWdetail').textContent=(+$('wDetail').value).toFixed(1);
+  $('vWextreme').textContent=(+$('wExtreme').value).toFixed(2);
   ['Sh','Md','Hi'].forEach(z=>{
     $('vZ'+z).textContent=(+$('z'+z).value/100).toFixed(2);
     $('vZ'+z+'W').textContent=$('z'+z+'W').value;
@@ -509,14 +537,8 @@ function renderPrev(img){
 // ---------- Export .cube ----------
 function download(){
   if(!lut)return;
-  const S=lut.size,oneDSize=33;
-  const conA=(+$('con').value/100),crushA=+$('crush').value/100;
-  const autoCrush=clamp((0.01-Math.min(refStats.p5,0.01))*40,0,0.6);
-  const crush=Math.abs(crushA-0.5)<0.01?autoCrush:crushA;
-  const oneDLUT=buildToneLUT(refStats,crush,conA);
-  let out='# Created with Colour Grade Tool v3.1.2\n# Combined 1D tone curve followed by 3D colour transform\nLUT_1D_SIZE '+oneDSize+'\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
-  for(let i=0;i<oneDSize;i++){const v=applyTone(oneDLUT,i/(oneDSize-1));out+=v.toFixed(6)+' '+v.toFixed(6)+' '+v.toFixed(6)+'\n';}
-  out+='\n';
+  const S=lut.size;
+  let out='# Created with Colour Grade Tool v3.1.2\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
   const D=lut.data;
   for(let i=0;i<D.length;i+=3){
     out+=D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6)+'\n';
@@ -527,7 +549,7 @@ function download(){
 
 // ---------- Presets localStorage ----------
 const PKEY='cgt_presets_v31';
-const CTL_IDS=['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW'];
+const CTL_IDS=['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW','wSkin','wDetail','wExtreme'];
 function loadPresets(){
   try{return JSON.parse(localStorage.getItem(PKEY))||{};}catch(e){return {};}
 }
@@ -556,6 +578,8 @@ function deletePreset(){
   localStorage.setItem(PKEY,JSON.stringify(ps));refreshPresetList();
 }
 
+$('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});
+
 // ---------- Wiring ----------
 setupDrop('dropRef',img=>{
   refStats=analyze(img);
@@ -578,7 +602,7 @@ setupDrop('dropPrev',img=>{
   }
   renderPrev(img);
 });
-['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW'].forEach(id=>{
+['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW','wSkin','wDetail','wExtreme'].forEach(id=>{
   $(id).addEventListener('input',()=>{syncLabels();if(refStats)generateLUT(+$('lutSize').value);});
 });
 $('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});
