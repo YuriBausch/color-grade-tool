@@ -253,24 +253,27 @@ function zoneWarmth(sr,sb,count,globalB){
 function analyze(img){
   const {data:d,n}=sampleImg(img);
   const lum=new Float32Array(n),rC=new Float32Array(n),gC=new Float32Array(n),bC=new Float32Array(n);
-  let satSum=0;
+  let satSum=0,weightSum=0;
+  const weights=new Float32Array(n);
   for(let i=0;i<n;i++){
     const r=srgb2lin(d[i*4]/255),g=srgb2lin(d[i*4+1]/255),b=srgb2lin(d[i*4+2]/255);
     rC[i]=r;gC[i]=g;bC[i]=b;
     lum[i]=0.2126*r+0.7152*g+0.0722*b;
-    const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
-    satSum+=mx>1e-5?(mx-mn)/mx:0;
+    const mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx>1e-5?(mx-mn)/mx:0;
+    const lab=rgb2lab(r,g,b),hue=(Math.atan2(lab[2],lab[1])*180/Math.PI+360)%360,chroma=Math.hypot(lab[1],lab[2]);
+    let w=1;if(hue>=10&&hue<=40&&chroma>=12&&chroma<=55)w*=3.5;else if(lum[i]>=.12&&lum[i]<=.88)w*=1.6;if(lum[i]<.05||lum[i]>.95)w*=.35;
+    weights[i]=w;satSum+=sat*w;weightSum+=w;
   }
   const sorted=lum.slice().sort();
   const p=f=>sorted[clamp(Math.floor(f*(n-1)),0,n-1)];
-  const meanCh=a=>{let s=0;for(let i=0;i<n;i++)s+=a[i];return s/n;};
+  const meanCh=a=>{let s=0;for(let i=0;i<n;i++)s+=a[i]*weights[i];return s/Math.max(weightSum,1e-9);};
   const mr=meanCh(rC),mg=meanCh(gC),mb=meanCh(bC);
   let sLoR=0,sLoB=0,sHiR=0,sHiB=0,cLo=0,cHi=0;
   const tLo=p(0.35),tHi=p(0.65);
   for(let i=0;i<n;i++){if(lum[i]<tLo){sLoR+=rC[i];sLoB+=bC[i];cLo++;}else if(lum[i]>tHi){sHiR+=rC[i];sHiB+=bC[i];cHi++;}}
   return {
     p1:p(0.01),p5:p(0.05),p25:p(0.25),p50:p(0.50),p75:p(0.75),p95:p(0.95),p99:p(0.99),
-    sat:satSum/n,
+    sat:satSum/Math.max(weightSum,1e-9),
     warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
     warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
     meanR:mr,meanG:mg,meanB:mb
@@ -506,8 +509,14 @@ function renderPrev(img){
 // ---------- Export .cube ----------
 function download(){
   if(!lut)return;
-  const S=lut.size;
-  let out='# Created with Colour Grade Tool v3.1.2\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
+  const S=lut.size,oneDSize=33;
+  const conA=(+$('con').value/100),crushA=+$('crush').value/100;
+  const autoCrush=clamp((0.01-Math.min(refStats.p5,0.01))*40,0,0.6);
+  const crush=Math.abs(crushA-0.5)<0.01?autoCrush:crushA;
+  const oneDLUT=buildToneLUT(refStats,crush,conA);
+  let out='# Created with Colour Grade Tool v3.1.2\n# Combined 1D tone curve followed by 3D colour transform\nLUT_1D_SIZE '+oneDSize+'\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
+  for(let i=0;i<oneDSize;i++){const v=applyTone(oneDLUT,i/(oneDSize-1));out+=v.toFixed(6)+' '+v.toFixed(6)+' '+v.toFixed(6)+'\n';}
+  out+='\n';
   const D=lut.data;
   for(let i=0;i<D.length;i+=3){
     out+=D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6)+'\n';
@@ -591,5 +600,6 @@ $('btnDel').addEventListener('click',deletePreset);
 syncLabels();refreshPresetList();
 </script>
 <script src="colormatch.js"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
