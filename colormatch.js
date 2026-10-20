@@ -12,7 +12,7 @@
  *   dans la <div class="row"> des boutons :
  *     <button id="btnAuto" class="sec">🎯 Match auto</button>
  *
- * Le module branche lui-même le bouton s'il détecte refStats/generateLUT.
+ * Le module expose run via CGT_AUTOMATCH ; index.html possède le listener.
  */
 (function(){
   'use strict';
@@ -103,9 +103,8 @@
   // ---------- Point d'entrée UI ----------
   function init(){
     const btn=document.getElementById('btnAuto');
-    if(!btn)return;
-    btn.addEventListener('click',()=>{
-      if(typeof refStats==='undefined'||!refStats){alert('Charge d\u2019abord une image de référence.');return;}
+    const run=()=>{
+      if(typeof refStats==='undefined'||!refStats){alert('Charge d’abord une image de référence.');return;}
       if(!prevImg){alert('Charge une frame de rush à prévisualiser.');return;}
       btn.disabled=true;btn.textContent='⏳ Calcul…';
       setTimeout(()=>{
@@ -136,17 +135,19 @@
           set('warm',warmSug);
           if(typeof syncLabels==='function')syncLabels();
           if(typeof generateLUT==='function')generateLUT(+(document.getElementById('lutSize')||{value:33}).value);
-          btn.textContent='🎯 Match auto';btn.disabled=false;
+          if(btn){btn.textContent='🎯 Match auto';btn.disabled=false;}
         }catch(e){
           console.error(e);alert('Erreur auto-match : '+e.message);
-          btn.textContent='🎯 Match auto';btn.disabled=false;
+          if(btn){btn.textContent='🎯 Match auto';btn.disabled=false;}
         }
       },30);
-    });
+    };
+    // index.html owns the click listener and invokes the public run API.
+    window.CGT_AUTOMATCH={labStats,reinhardMap,autoTune,run};
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
   else init();
 
   // Exposition publique pour usage avancé / tests
-  window.CGT_AUTOMATCH={labStats,reinhardMap,autoTune};
+  if(typeof window.CGT_AUTOMATCH==='undefined')window.CGT_AUTOMATCH={labStats,reinhardMap,autoTune};
 })();

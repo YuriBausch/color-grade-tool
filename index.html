@@ -139,6 +139,7 @@
 
   <div class="row">
     <button id="btnDl">⬇ Exporter la LUT .cube</button>
+    <button id="btnAuto" class="sec">🎯 Match auto</button>
     <button id="btnReset" class="sec">↺ Reset</button>
     <select id="lutSize">
       <option value="33" selected>LUT 33³ (rapide)</option>
@@ -239,7 +240,7 @@ function sampleImg(img){
 
 // ---------- Chaleur de zone bornée et conditionnée au signal ----------
 // Ratio R/B fiable uniquement si la zone contient assez de lumière et de bleu.
-// Sinon → neutre (1.0). Toujours borné [0.6, 1.6] pour éviter toutembalance extrême.
+// Sinon → neutre (1.0). Toujours borné [0.6, 1.6] pour éviter tout embalance extrême.
 function zoneWarmth(sr,sb,count,globalB){
   if(!count)return 1;
   const mr=sr/count, mb=sb/count;
@@ -573,6 +574,11 @@ setupDrop('dropPrev',img=>{
 });
 $('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});
 $('btnDl').addEventListener('click',download);
+$('btnAuto').addEventListener('click',()=>{
+  if(window.CGT_AUTOMATCH && typeof window.CGT_AUTOMATCH.run==='function')window.CGT_AUTOMATCH.run();
+  else if(typeof window.CGT_AUTOMATCH==='function')window.CGT_AUTOMATCH();
+  else console.warn('colormatch.js non chargé');
+});
 $('btnReset').addEventListener('click',()=>{
   $('intensity').value=100;$('sat').value=100;$('warm').value=0;$('crush').value=50;$('con').value=100;
   ['zSh','zShW','zMd','zMdW','zHi','zHiW'].forEach(id=>$(id).value=0);
@@ -584,5 +590,6 @@ $('btnLoad').addEventListener('click',applyPreset);
 $('btnDel').addEventListener('click',deletePreset);
 syncLabels();refreshPresetList();
 </script>
+<script src="colormatch.js"></script>
 </body>
 </html>
