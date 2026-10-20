@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Colour Grade Tool v3.1 — Ref shot vers LUT .cube pour DaVinci Resolve. Tétraédrique, score ΔE, presets. 100% local.">
+<meta name="description" content="Colour Grade Tool v3.1.1 — Ref shot vers LUT .cube pour DaVinci Resolve. Tétraédrique, score ΔE, presets. 100% local.">
 <title>Colour Grade Tool v3.1 — Ref Shot → LUT .cube</title>
 <style>
   :root{--bg:#0e0e10;--bg2:#131316;--panel:#1b1b1f;--panel2:#222227;--acc:#e8a33d;--acc2:#f0b95e;--txt:#eaeaea;--mut:#8a8a90;--line:#2b2b31;--radius:14px;--ok:#5ec26a;--warn:#e0b23d;--bad:#e05a4b;}
@@ -26,27 +26,25 @@
   .drop__ico{font-size:1.8rem;}
   .drop img,.drop canvas{max-width:100%;max-height:420px;display:block;}
   .drop .imgwrap{width:100%;display:flex;justify-content:center;}
-  .thumbtag{position:absolute;top:10px;left:10px;font-size:.65rem;background:rgba(0,0,0,.75);padding:3px 10px;border-radius:6px;letter-spacing:1.5px;text-transform:uppercase;z-index:3;border:1px solid var(--line);}
+  .thumbtag{position:absolute;top:10px;left:10px;font-size:.65rem;background:rgba(0,0,0,.75);padding:3px 10px;border-radius:6px;letter-spacing:1.5px;text-transform:uppercase;z-index:5;border:1px solid var(--line);}
   .ba{position:relative;width:100%;user-select:none;overflow:hidden;}
   .ba img,.ba canvas{width:100%;display:block;}
-  .ba canvas{position:absolute;inset:0;clip-path:inset(0 0 0 var(--split,50%));}
+  .ba canvas{position:absolute;inset:0;clip-path:inset(0 0 0 var(--split,50%));pointer-events:none;}
   .ba__label{position:absolute;top:10px;font-size:.62rem;letter-spacing:1.5px;text-transform:uppercase;background:rgba(0,0,0,.75);border:1px solid var(--line);padding:3px 10px;border-radius:6px;z-index:4;pointer-events:none;}
   .ba__label--before{left:10px;} .ba__label--after{right:10px;color:var(--acc);border-color:rgba(232,163,61,.5);}
   .ba__handle{position:absolute;top:0;bottom:0;left:var(--split,50%);width:2px;background:var(--acc);z-index:3;cursor:ew-resize;box-shadow:0 0 14px rgba(232,163,61,.6);}
   .ba__handle::after{content:'⇔';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--acc);color:#111;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.5);}
   .ba__empty{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--mut);font-size:.82rem;gap:10px;}
   .ba__empty .drop__ico{font-size:1.8rem;opacity:.6;}
+  .descore{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;display:flex;align-items:center;gap:18px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .descore__num{font-size:1.6rem;font-weight:800;color:var(--mut);min-width:74px;text-align:center;font-variant-numeric:tabular-nums;}
+  .descore--ok .descore__num{color:var(--ok);} .descore--warn .descore__num{color:var(--warn);} .descore--bad .descore__num{color:var(--bad);}
+  .descore__txt{font-size:.78rem;color:var(--mut);line-height:1.55;} .descore__txt b{color:var(--txt);}
   .stats{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;font-size:.8rem;display:none;box-shadow:0 8px 30px rgba(0,0,0,.35);}
   .stats h3{font-size:.7rem;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:10px;}
   .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:4px 24px;}
   .statrow{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);}
   .statrow b{font-weight:600;color:var(--acc2);font-variant-numeric:tabular-nums;}
-  .descore{display:none;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:18px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
-  .descore__num{font-size:1.7rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:96px;text-align:center;border-radius:10px;padding:6px 12px;border:1px solid var(--line);}
-  .descore__num.ok{color:var(--ok);border-color:var(--ok);background:rgba(94,194,106,.08);}
-  .descore__num.warn{color:var(--warn);border-color:var(--warn);background:rgba(224,178,61,.08);}
-  .descore__num.bad{color:var(--bad);border-color:var(--bad);background:rgba(224,90,75,.08);}
-  .descore__txt{font-size:.78rem;color:var(--mut);line-height:1.55;} .descore__txt b{color:var(--txt);}
   .controls{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
   .ctl{margin-bottom:14px;}
   .ctl label{display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:5px;color:#c9c9cf;}
@@ -66,10 +64,10 @@
 </head>
 <body>
 <header class="top">
-  <h1>Colour Grade Tool <b>v3.1</b></h1>
-  <span class="badge">100 % local</span>
+  <h1>Colour <b>Grade</b> Tool</h1>
+  <span class="badge">v3.1.1</span>
 </header>
-<p class="sub">Dépose une <b>frame de référence</b> (le look visé), puis une <b>frame de tes rushes</b> pour prévisualiser le résultat avec un slider avant/après et un <b>score de match ΔE</b>. Export en <b>LUT .cube</b> pour DaVinci Resolve. Aucune image n'est envoyée sur un serveur.</p>
+<p class="sub">Charge une <b>image de référence</b> (le look visé), puis une <b>frame de tes rushes</b> pour prévisualiser le résultat avec un slider avant/après. Export en <b>LUT .cube</b> pour DaVinci Resolve. Aucune image n'est envoyée sur un serveur.</p>
 
 <div class="grid">
   <div class="card">
@@ -86,6 +84,7 @@
   <div class="card">
     <div class="card__head"><span class="card__title">② Prévisualisation — avant / après</span><span class="card__hint">glisse la poignée ⇔</span></div>
     <div class="drop" id="dropPrev">
+      <span class="thumbtag" style="display:none" id="tagPrev">Rush chargé</span>
       <div class="ba" id="baPrev" style="display:none">
         <img id="baBefore" alt="Avant">
         <canvas id="cvPrev"></canvas>
@@ -153,7 +152,7 @@
 
 <script>
 const $=id=>document.getElementById(id);
-let refStats=null, lut=null, prevImg=null;
+let refStats=null, lut=null, prevImg=null, prevURL=null, refURL=null;
 
 // ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
 function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
@@ -202,19 +201,26 @@ function deltaE2000(l1,a1,b1,l2,a2,b2){
   return Math.sqrt(Math.pow(dLp/SL,2)+Math.pow(dCp/SC,2)+Math.pow(dHp/SH,2)+RT*(dCp/SC)*(dHp/SH));
 }
 
-// ---------- Chargement d'image ----------
+// ---------- Chargement d'image (robuste) ----------
+function loadImageFile(f,cb){
+  if(!f)return;
+  if(!f.type||!f.type.startsWith('image/')){alert('⚠ Fichier non reconnu comme image ('+(f.type||'type inconnu')+')');return;}
+  const url=URL.createObjectURL(f);
+  const img=new Image();
+  img.onload=()=>cb(img,url);
+  img.onerror=()=>{URL.revokeObjectURL(url);alert('⚠ Impossible de décoder cette image.');};
+  img.src=url;
+}
 function setupDrop(dropId,cb){
   const d=$(dropId);
   d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('over');});
   d.addEventListener('dragleave',()=>d.classList.remove('over'));
-  d.addEventListener('drop',e=>{e.preventDefault();d.classList.remove('over');handleFile(e.dataTransfer.files[0],cb);});
-  d.addEventListener('click',()=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=()=>handleFile(i.files[0],cb);i.click();});
-}
-function handleFile(f,cb){
-  if(!f||!f.type.startsWith('image/'))return;
-  const img=$(cb.imgId);
-  img.onload=()=>cb.fn(img);
-  img.src=URL.createObjectURL(f);
+  d.addEventListener('drop',e=>{e.preventDefault();d.classList.remove('over');loadImageFile(e.dataTransfer.files[0],cb);});
+  d.addEventListener('click',()=>{
+    const i=document.createElement('input');i.type='file';i.accept='image/*';
+    i.onchange=()=>{if(i.files&&i.files[0])loadImageFile(i.files[0],cb);};
+    i.click();
+  });
 }
 
 // ---------- Échantillonnage à surface constante (~65k px) ----------
@@ -335,25 +341,45 @@ function generateLUT(size){
     let R=applyTone(lutT,r0),G=applyTone(lutT,g0),B=applyTone(lutT,b0);
     const y=0.2126*R+0.7152*G+0.0722*B;
     R=y+(R-y)*satTarget;G=y+(G-y)*satTarget;B=y+(B-y)*satTarget;
-    // Pondération gaussienne des zones autour de y≈0.18 / 0.45 / 0.78
     const wSh=Math.exp(-Math.pow((y-0.18)/0.16,2));
     const wMd=Math.exp(-Math.pow((y-0.45)/0.18,2));
     const wHi=Math.exp(-Math.pow((y-0.78)/0.18,2));
     const wSum=wSh+wMd+wHi;
-    const expo=(z.sh*wSh+z.md*wMd+z.hi*wHi)/wSum;   // exposition relative par zone
-    const wf=(z.shW*wSh+z.mdW*wMd+z.hiW*wHi)/wSum;  // chaleur relative par zone
-    const gain=Math.pow(2,expo*0.6);                 // ±0.6 stop max
-    R*=gain;G*=gain;B*=gain;
-    const kR=Math.pow(2,wf*0.12);                    // ±0.12 stop R/B max
-    R*=kR;B/=kR;
-    const oR=r0*(1-intA)+R*intA, oG=g0*(1-intA)+G*intA, oB=b0*(1-intA)+B*intA;
-    data[k++]=clamp(lin2srgb(clamp(oR,0,1)),0,1);
-    data[k++]=clamp(lin2srgb(clamp(oG,0,1)),0,1);
-    data[k++]=clamp(lin2srgb(clamp(oB,0,1)),0,1);
+    const expo=(z.sh*wSh+z.md*wMd+z.hi*wHi)/wSum;
+    const wf=(z.shW*wSh+z.mdW*wMd+z.hiW*wHi)/wSum;
+    const ef=Math.pow(2,expo*0.6*intA);
+    R*=ef;G*=ef;B*=ef;
+    R+=wf*0.08*intA;B-=wf*0.08*intA;
+    // Warmth global
+    R*=wLo+(wHi-wLo)*y; G*=1; B*=(2-wLo-(wHi-wLo)*y)*0.5+0.5;
+    // Mélange avec l'original selon l'intensité
+    R=r0+(R-r0)*intA; G=g0+(G-g0)*intA; B=b0+(B-b0)*intA;
+    data[k++]=clamp(lin2srgb(clamp(R,0,1)),0,1);
+    data[k++]=clamp(lin2srgb(clamp(G,0,1)),0,1);
+    data[k++]=clamp(lin2srgb(clamp(B,0,1)),0,1);
   }
   lut={size,data};
   $('btnDl').disabled=false;
-  applyPreview();
+  if(prevImg)renderPrev(prevImg);
+}
+
+// ---------- Lab moyen de la référence (pour ΔE) ----------
+function refMeanLab(){
+  if(!refStats)return null;
+  return rgb2lab(refStats.meanR,refStats.meanG,refStats.meanB);
+}
+
+// ---------- Affichage du score ΔE ----------
+function showDE(de){
+  const box=$('deBox');
+  box.classList.remove('descore--ok','descore--warn','descore--bad');
+  let cls,txt;
+  if(de<2){cls='descore--ok';txt='<b>ΔE '+fmt(de,1)+' — Excellent match 🟢</b><br>Le look gradé est quasi imperceptiblement différent de la référence. Tu peux exporter la LUT en confiance.';}
+  else if(de<5){cls='descore--warn';txt='<b>ΔE '+fmt(de,1)+' — Bon match 🟡</b><br>Différences légères visibles côte à côte. Ajuste saturation / chaleur / zones pour affiner.';}
+  else{cls='descore--bad';txt='<b>ΔE '+fmt(de,1)+' — Match approximatif 🔴</b><br>Le look s\'écarte nettement de la référence. Vérifie que la frame de rush est comparable à la référence (exposition, contenu).';}
+  box.classList.add(cls);
+  $('deNum').textContent=fmt(de,1);
+  $('deTxt').innerHTML=txt;
 }
 
 // ---------- Interpolation tétraédrique (dispatch 6 tétraèdres) ----------
@@ -370,72 +396,46 @@ function lutTetra(r,g,b){
   for(let ch=0;ch<3;ch++){
     let val;
     if(fx>fy){
-      if(fy>fz)       val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fy*(v[3][ch]-v[1][ch])+fz*(v[7][ch]-v[3][ch]); // R>G>B
-      else if(fx>fz)  val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fz*(v[5][ch]-v[1][ch])+fy*(v[7][ch]-v[5][ch]); // R>B>G
-      else            val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fx*(v[5][ch]-v[4][ch])+fy*(v[7][ch]-v[5][ch]); // B>R>G
+      if(fy>fz)       val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fy*(v[3][ch]-v[1][ch])+fz*(v[7][ch]-v[3][ch]);
+      else if(fx>fz)  val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fz*(v[5][ch]-v[1][ch])+fy*(v[7][ch]-v[5][ch]);
+      else            val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fx*(v[5][ch]-v[4][ch])+fy*(v[7][ch]-v[5][ch]);
     }else{
-      if(fz>fy)       val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fy*(v[6][ch]-v[4][ch])+fx*(v[7][ch]-v[6][ch]); // B>G>R
-      else if(fx>fz)  val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fx*(v[3][ch]-v[2][ch])+fz*(v[7][ch]-v[3][ch]); // G>R>B
-      else            val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fz*(v[6][ch]-v[2][ch])+fx*(v[7][ch]-v[6][ch]); // G>B>R
+      if(fz>fy)       val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fy*(v[6][ch]-v[4][ch])+fx*(v[7][ch]-v[6][ch]);
+      else if(fx>fz)  val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fx*(v[3][ch]-v[2][ch])+fz*(v[7][ch]-v[3][ch]);
+      else            val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fz*(v[6][ch]-v[2][ch])+fx*(v[7][ch]-v[6][ch]);
     }
     out[ch]=clamp(val,0,1);
   }
   return out;
 }
 
-// ---------- Prévisualisation + ΔE ----------
-let refLabCache=null;
-function refMeanLab(){
-  if(!refLabCache){
-    const img=$('imgRef');
-    const {data,n}=sampleImg(img);
-    let L=0,A=0,B=0;
-    for(let i=0;i<n;i++){
-      const lab=rgb2lab(srgb2lin(data[i*4]/255),srgb2lin(data[i*4+1]/255),srgb2lin(data[i*4+2]/255));
-      L+=lab[0];A+=lab[1];B+=lab[2];
-    }
-    refLabCache=[L/n,A/n,B/n];
-  }
-  return refLabCache;
-}
-function showDE(de){
-  $('deBox').style.display='flex';
-  $('deNum').textContent=de.toFixed(1);
-  let cls,verdict;
-  if(de<2){cls='ok';verdict='<b>Excellent match</b> — imperceptible à l\'œil nu (ΔE < 2).';}
-  else if(de<5){cls='warn';verdict='<b>Bon match</b> — légères différences perceptibles côte à côte (ΔE 2–5).';}
-  else{cls='bad';verdict='<b>Match approximatif</b> — différences visibles ; ajuste les réglages ou change de frame de rush (ΔE > 5).';}
-  $('deNum').className='descore__num '+cls;
-  $('deTxt').innerHTML='<b>Score de match ΔE (CIEDE2000)</b><br>'+verdict+'<br><span style="font-size:.7rem">Moyenne sur ~4 000 pixels : rush gradé vs Lab moyen de la référence.</span>';
-}
-function applyPreview(){
-  const img=$('imgPrev');
-  if(!img.src||!lut)return;
-  prevImg=img;
+// ---------- Rendu de la prévisualisation ----------
+function renderPrev(img){
+  if(!lut)return;
   const cv=$('cvPrev');
-  const maxW=1280;
-  const sc=Math.min(1,maxW/img.naturalWidth);
-  cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
-  $('baEmpty').style.display='none';$('baPrev').style.display='block';
+  const scale=Math.min(1,1280/img.width);
+  cv.width=Math.max(1,Math.round(img.width*scale));
+  cv.height=Math.max(1,Math.round(img.height*scale));
+  $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
   const before=$('baBefore');
   if(before.src!==img.src)before.src=img.src;
-  const ctx=cv.getContext('2d');ctx.drawImage(img,0,0,cv.width,cv.height);
+  const ctx=cv.getContext('2d',{willReadFrequently:true});
+  ctx.drawImage(img,0,0,cv.width,cv.height);
   const id=ctx.getImageData(0,0,cv.width,cv.height);const d=id.data;
-  const refL=refStats?refMeanLab():null;
   let sumDE=0,deCount=0;
   for(let i=0;i<d.length;i+=4){
     const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
-    const [R,G,B]=lutTetra(r,g,b);
-    d[i]=R*255;d[i+1]=G*255;d[i+2]=B*255;
-    if(refL&&((i>>2)%16===0)){
+    const R0=lutTetra(r,g,b);
+    d[i]=R0[0]*255;d[i+1]=R0[1]*255;d[i+2]=R0[2]*255;
+    if((i>>2)%16===0){
       const lab1=rgb2lab(srgb2lin(r),srgb2lin(g),srgb2lin(b));
-      const lab2=rgb2lab(srgb2lin(R),srgb2lin(G),srgb2lin(B));
+      const lab2=rgb2lab(srgb2lin(R0[0]),srgb2lin(R0[1]),srgb2lin(R0[2]));
       sumDE+=deltaE2000(lab1[0],lab1[1],lab1[2],lab2[0],lab2[1],lab2[2]);
       deCount++;
     }
   }
   ctx.putImageData(id,0,0);
-  if(refL&&deCount)showDE(sumDE/deCount);
+  if(deCount)showDE(sumDE/deCount);
 }
 
 // Slider avant/après
@@ -508,23 +508,42 @@ function syncLabels(){
 }
 
 // ---------- Wiring ----------
-setupDrop('dropRef',{imgId:'imgRef',fn:img=>{
-  $('imgRef').style.display='block';$('ringRef').style.display='none';$('tagRef').style.display='block';
-  refLabCache=null;
-  refStats=analyze(img);showStats(refStats);generateLUT(+$('lutSize').value);
-}});
-setupDrop('dropPrev',{imgId:'imgPrev',fn:()=>applyPreview()});
-CTL_IDS.forEach(id=>$(id).addEventListener('input',()=>{syncLabels();if(refStats)generateLUT(+$('lutSize').value);}));
-$('lutSize').addEventListener('change',()=>refStats&&generateLUT(+$('lutSize').value));
+setupDrop('dropRef',img=>{
+  refStats=analyze(img);
+  showStats(refStats);
+  const ir=$('imgRef');
+  ir.src=img.src;ir.style.display='block';
+  $('ringRef').style.display='none';
+  $('tagRef').style.display='block';
+  generateLUT(+$('lutSize').value);
+});
+setupDrop('dropPrev',img=>{
+  prevImg=img;
+  if(!lut){
+    // LUT pas encore générée : afficher l'image en attendant la référence
+    $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
+    $('baBefore').src=img.src;
+    const cv=$('cvPrev');cv.width=img.width;cv.height=img.height;
+    cv.getContext('2d').drawImage(img,0,0);
+    return;
+  }
+  renderPrev(img);
+});
+['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW'].forEach(id=>{
+  $(id).addEventListener('input',()=>{syncLabels();if(refStats)generateLUT(+$('lutSize').value);});
+});
+$('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});
 $('btnDl').addEventListener('click',download);
 $('btnReset').addEventListener('click',()=>{
-  [100,100,0,50,100,0,0,0,0,0,0].forEach((v,i)=>$(CTL_IDS[i]).value=v);
-  syncLabels();if(refStats)generateLUT(+$('lutSize').value);
+  $('intensity').value=100;$('sat').value=100;$('warm').value=0;$('crush').value=50;$('con').value=100;
+  ['zSh','zShW','zMd','zMdW','zHi','zHiW'].forEach(id=>$(id).value=0);
+  syncLabels();
+  if(refStats)generateLUT(+$('lutSize').value);
 });
 $('btnSave').addEventListener('click',savePreset);
 $('btnLoad').addEventListener('click',applyPreset);
 $('btnDel').addEventListener('click',deletePreset);
-refreshPresetList();syncLabels();
+syncLabels();refreshPresetList();
 </script>
 </body>
 </html>
