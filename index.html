@@ -3,50 +3,138 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Colour Grade Tool v2 — Ref Shot → LUT .cube</title>
+<meta name="description" content="Colour Grade Tool — Ref shot vers LUT .cube pour DaVinci Resolve. 100% local.">
+<title>Colour Grade Tool v3 — Ref Shot → LUT .cube</title>
 <style>
-  :root{--bg:#141414;--panel:#1e1e1e;--acc:#e8a33d;--txt:#e6e6e6;--mut:#888;}
+  :root{
+    --bg:#0e0e10;--bg2:#131316;--panel:#1b1b1f;--panel2:#222227;
+    --acc:#e8a33d;--acc2:#f0b95e;--txt:#eaeaea;--mut:#8a8a90;
+    --line:#2b2b31;--radius:14px;
+  }
   *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
-  body{background:var(--bg);color:var(--txt);padding:24px;max-width:1200px;margin:auto;}
-  h1{font-size:1.4rem;margin-bottom:4px;} h1 span{color:var(--acc);}
-  p.sub{color:var(--mut);font-size:.85rem;margin-bottom:20px;}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
-  @media(max-width:800px){.grid{grid-template-columns:1fr;}}
-  .drop{background:var(--panel);border:2px dashed #444;border-radius:10px;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s;overflow:hidden;position:relative;}
-  .drop:hover,.drop.over{border-color:var(--acc);}
-  .drop img{max-width:100%;max-height:340px;display:block;}
-  .drop .hint{color:var(--mut);font-size:.85rem;padding:12px;text-align:center;}
-  .drop .tag{position:absolute;top:8px;left:10px;font-size:.7rem;background:#000a;padding:2px 8px;border-radius:4px;letter-spacing:1px;}
-  canvas{max-width:100%;display:none;}
-  .stats{background:var(--panel);border-radius:10px;padding:14px;margin-bottom:16px;font-size:.8rem;display:none;}
-  .stats h3{font-size:.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--acc);margin-bottom:8px;}
-  .statrow{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #2a2a2a;}
-  .statrow b{font-weight:600;}
-  .controls{background:var(--panel);border-radius:10px;padding:16px;}
-  .ctl{margin-bottom:12px;}
-  .ctl label{display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:4px;color:#ccc;}
-  .ctl label span{color:var(--acc);}
-  input[type=range]{width:100%;accent-color:var(--acc);}
-  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
-  button{background:var(--acc);color:#141414;border:0;padding:10px 18px;border-radius:6px;font-weight:600;cursor:pointer;font-size:.85rem;}
-  button:hover{filter:brightness(1.1);}
-  button.sec{background:#333;color:var(--txt);}
-  #lutSize{background:#2a2a2a;color:var(--txt);border:1px solid #444;padding:8px;border-radius:6px;}
-  .note{color:var(--mut);font-size:.75rem;margin-top:10px;line-height:1.5;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(232,163,61,.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(232,163,61,.05), transparent 60%),
+      var(--bg);
+    color:var(--txt);padding:28px 24px 48px;max-width:1240px;margin:auto;
+  }
+  header.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+  h1{font-size:1.5rem;letter-spacing:.5px;}
+  h1 b{color:var(--acc);}
+  .badge{font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--acc);
+    border:1px solid var(--acc);border-radius:999px;padding:3px 10px;}
+  p.sub{color:var(--mut);font-size:.85rem;margin-bottom:24px;max-width:70ch;line-height:1.5;}
+  p.sub b{color:var(--txt);font-weight:600;}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:0 8px 30px rgba(0,0,0,.35);overflow:hidden;}
+  .card__head{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel2);}
+  .card__title{font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--acc);font-weight:700;}
+  .card__hint{font-size:.7rem;color:var(--mut);}
+
+  .drop{position:relative;min-height:300px;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;cursor:pointer;transition:border-color .2s, background .2s;}
+  .drop:hover,.drop.over{background:rgba(232,163,61,.05);}
+  .drop:hover .drop__ring,.drop.over .drop__ring{border-color:var(--acc);color:var(--acc);}
+  .drop__ring{border:2px dashed #3a3a42;border-radius:12px;margin:14px;padding:28px 22px;
+    display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--mut);
+    font-size:.82rem;text-align:center;line-height:1.5;transition:all .2s;flex:1;justify-content:center;width:100%;}
+  .drop__ico{font-size:1.8rem;}
+  .drop img,.drop canvas{max-width:100%;max-height:420px;display:block;}
+  .drop .imgwrap{width:100%;display:flex;justify-content:center;}
+  .thumbtag{position:absolute;top:10px;left:10px;font-size:.65rem;background:rgba(0,0,0,.75);
+    padding:3px 10px;border-radius:6px;letter-spacing:1.5px;text-transform:uppercase;z-index:3;
+    border:1px solid var(--line);}
+
+  /* Slider avant/après */
+  .ba{position:relative;width:100%;user-select:none;overflow:hidden;}
+  .ba img,.ba canvas{width:100%;display:block;}
+  .ba canvas{position:absolute;inset:0;clip-path:inset(0 0 0 var(--split,50%));}
+  .ba__label{position:absolute;top:10px;font-size:.62rem;letter-spacing:1.5px;text-transform:uppercase;
+    background:rgba(0,0,0,.75);border:1px solid var(--line);padding:3px 10px;border-radius:6px;z-index:4;pointer-events:none;}
+  .ba__label--before{left:10px;}
+  .ba__label--after{right:10px;color:var(--acc);border-color:rgba(232,163,61,.5);}
+  .ba__handle{position:absolute;top:0;bottom:0;left:var(--split,50%);width:2px;background:var(--acc);
+    z-index:3;cursor:ew-resize;box-shadow:0 0 14px rgba(232,163,61,.6);}
+  .ba__handle::after{content:'⇔';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:var(--acc);color:#111;width:34px;height:34px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:.95rem;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.5);}
+  .ba__empty{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    color:var(--mut);font-size:.82rem;gap:10px;}
+  .ba__empty .drop__ico{font-size:1.8rem;opacity:.6;}
+
+  .stats{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;margin-bottom:18px;font-size:.8rem;display:none;
+    box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .stats h3{font-size:.7rem;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:10px;}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:4px 24px;}
+  .statrow{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);}
+  .statrow b{font-weight:600;color:var(--acc2);font-variant-numeric:tabular-nums;}
+
+  .controls{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .ctl{margin-bottom:14px;}
+  .ctl label{display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:5px;color:#c9c9cf;}
+  .ctl label span{color:var(--acc);font-weight:600;font-variant-numeric:tabular-nums;}
+  input[type=range]{width:100%;accent-color:var(--acc);height:4px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center;}
+  button{background:var(--acc);color:#141414;border:0;padding:11px 20px;border-radius:8px;
+    font-weight:700;cursor:pointer;font-size:.85rem;transition:filter .15s, transform .05s;}
+  button:hover{filter:brightness(1.12);}
+  button:active{transform:translateY(1px);}
+  button:disabled{opacity:.4;cursor:not-allowed;filter:none;}
+  button.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line);}
+  #lutSize{background:var(--panel2);color:var(--txt);border:1px solid var(--line);padding:10px;border-radius:8px;font-size:.85rem;}
+  .note{color:var(--mut);font-size:.72rem;margin-top:14px;line-height:1.6;border-top:1px solid var(--line);padding-top:12px;}
+  .note b{color:#bbb;}
 </style>
 </head>
 <body>
-<h1>Colour Grade Tool <span>v2</span></h1>
-<p class="sub">Ref shot → analyse perceptuelle → LUT .cube pour DaVinci Resolve. 100 % local, aucune image n'est envoyée.</p>
+<header class="top">
+  <h1>Colour Grade Tool <b>v3</b></h1>
+  <span class="badge">100 % local</span>
+</header>
+<p class="sub">Dépose une <b>frame de référence</b> (le look visé), puis une <b>frame de tes rushes</b> pour prévisualiser le résultat avec un slider avant/après. Export en <b>LUT .cube</b> pour DaVinci Resolve. Aucune image n'est envoyée sur un serveur.</p>
 
 <div class="grid">
-  <div class="drop" id="dropRef"><span class="tag">IMAGE DE RÉFÉRENCE (look visé)</span><span class="hint">Glisse ici la frame de référence<br>(ou clique pour parcourir)</span><img id="imgRef" style="display:none"></div>
-  <div class="drop" id="dropPrev"><span class="tag">RUSH À PRÉVISUALISER</span><span class="hint">Glisse une frame de tes rushes<br>pour voir le résultat avant export</span><img id="imgPrev" style="display:none"><canvas id="cvPrev"></canvas></div>
+  <div class="card">
+    <div class="card__head"><span class="card__title">① Image de référence — look visé</span><span class="card__hint">glisser-déposer ou cliquer</span></div>
+    <div class="drop" id="dropRef">
+      <span class="thumbtag" style="display:none" id="tagRef">Référence chargée</span>
+      <div class="drop__ring" id="ringRef">
+        <span class="drop__ico">🎞️</span>
+        Glisse ici la frame de référence<br>(ou clique pour parcourir)
+      </div>
+      <div class="imgwrap"><img id="imgRef" style="display:none" alt="Frame de référence"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__head"><span class="card__title">② Prévisualisation — avant / après</span><span class="card__hint">glisse la poignée ⇔</span></div>
+    <div class="drop" id="dropPrev">
+      <div class="ba" id="baPrev" style="display:none">
+        <img id="baBefore" alt="Avant">
+        <canvas id="cvPrev"></canvas>
+        <span class="ba__label ba__label--before">Avant</span>
+        <span class="ba__label ba__label--after">Après · LUT</span>
+        <div class="ba__handle" id="baHandle"></div>
+      </div>
+      <div class="ba__empty" id="baEmpty">
+        <span class="drop__ico">🎬</span>
+        Glisse une frame de tes rushes<br>pour comparer avant / après
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="stats" id="statsBox">
   <h3>Analyse de la référence (espace linéaire, Rec.709)</h3>
-  <div id="statsBody"></div>
+  <div class="statgrid" id="statsBody"></div>
 </div>
 
 <div class="controls">
@@ -73,7 +161,7 @@ function lin2srgb(c){ return c<=0.0031308 ? c*12.92 : 1.055*Math.pow(c,1/2.4)-0.
 function clamp(x,a,b){return Math.min(b,Math.max(a,x));}
 
 // ---------- Chargement d'image ----------
-function setupDrop(dropId,imgId,cb){
+function setupDrop(dropId,cb){
   const d=$(dropId);
   d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('over');});
   d.addEventListener('dragleave',()=>d.classList.remove('over'));
@@ -101,24 +189,22 @@ function analyze(img){
     const y=0.2126*r+0.7152*g+0.0722*b;
     lum[i]=y;
     const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
-    satSum+= mx>1e-5 ? (mx-mn)/mx : 0; // chroma relatif (HSV-like, linéaire)
+    satSum+= mx>1e-5 ? (mx-mn)/mx : 0;
   }
-  const q=f=>{const s=lum.slice().sort();return s[clamp(Math.floor(f*(n-1)),0,n-1)];};
-  const p=f=>q(f);
+  const sorted=lum.slice().sort();
+  const p=f=>sorted[clamp(Math.floor(f*(n-1)),0,n-1)];
   const meanCh=a=>{let s=0;for(let i=0;i<n;i++)s+=a[i];return s/n;};
   const mr=meanCh(rC),mg=meanCh(gC),mb=meanCh(bC);
-  // chaleur globale = ratio R/B, séparée ombres (P25) / hautes lumières (P75)
   let sLoR=0,sLoB=0,sHiR=0,sHiB=0,cLo=0,cHi=0;
   const tLo=p(0.35),tHi=p(0.65);
   for(let i=0;i<n;i++){ if(lum[i]<tLo){sLoR+=rC[i];sLoB+=bC[i];cLo++;} else if(lum[i]>tHi){sHiR+=rC[i];sHiB+=bC[i];cHi++;} }
-  const st={
+  return {
     p1:p(0.01),p5:p(0.05),p25:p(0.25),p50:p(0.50),p75:p(0.75),p95:p(0.95),p99:p(0.99),
     sat:satSum/n,
     warmLo:cLo? (sLoR/cLo)/Math.max(sLoB/cLo,1e-6):1,
     warmHi:cHi? (sHiR/cHi)/Math.max(sHiB/cHi,1e-6):1,
     meanR:mr,meanG:mg,meanB:mb
   };
-  return st;
 }
 
 function fmt(x,d=3){return x.toFixed(d);}
@@ -126,7 +212,7 @@ function showStats(s){
   $('statsBox').style.display='block';
   const rows=[
     ['Noirs P1 / P5', fmt(s.p1)+' / '+fmt(s.p5)],
-    ['P25 / P50 (median) / P75', fmt(s.p25)+' / '+fmt(s.p50)+' / '+fmt(s.p75)],
+    ['P25 / P50 (médiane) / P75', fmt(s.p25)+' / '+fmt(s.p50)+' / '+fmt(s.p75)],
     ['P95 / P99', fmt(s.p95)+' / '+fmt(s.p99)],
     ['Saturation moyenne (chroma relatif)', fmt(s.sat*100,1)+' %'],
     ['Chaleur ombres (R/B)', fmt(s.warmLo,2)],
@@ -137,34 +223,27 @@ function showStats(s){
 }
 
 // ---------- Courbe de tonalité : ancrages percentiles + interpolation monotone ----------
-// Mappe des ancrages neutres d'entrée vers les percentiles cibles dérivés de la ref.
 function buildToneLUT(s,crushAmt,conAmt){
-  // cibles : on remet la ref dans un cadre projetable (P50→~0.42 lin.) puis on module
   const mid=0.42;
-  const spread=conAmt; // 1 = tel quel
+  const spread=conAmt;
   const inA =[0, 0.0625, 0.25, 0.5, 0.75, 1.0];
   let outA=[
-    Math.max(s.p1*(1-crushAmt*0.6),0),            // P1  -> noirs
-    Math.max(s.p5*(1-crushAmt*0.35),0),           // P5
-    s.p25,                                        // P25
-    s.p50,                                        // P50
-    s.p75,                                        // P75
-    Math.min(s.p99,1)                             // P99
+    Math.max(s.p1*(1-crushAmt*0.6),0),
+    Math.max(s.p5*(1-crushAmt*0.35),0),
+    s.p25,
+    s.p50,
+    s.p75,
+    Math.min(s.p99,1)
   ];
-  // recentrage autour du médian + expansion de contraste
-  outA=outA.map(v=>clamp(mid+(v-s.p50)*spread+( (v>=s.p50? v-s.p50 : v-s.p50)*0 ),0,1));
-  // renormalisation douce pour garder P50 à mid
+  outA=outA.map(v=>clamp(mid+(v-s.p50)*spread,0,1));
   outA[3]=mid;
-  // garantie monotone stricte
   for(let i=1;i<outA.length;i++) outA[i]=Math.max(outA[i],outA[i-1]+0.001);
-  // interpolation monotone (Fritsch-Carlson simplifiée) échantillonnée sur 4096 pts
   const N=4096, lutT=new Float32Array(N);
   const slope=(outA[1]-outA[0])/(inA[1]-inA[0]);
   for(let i=0;i<N;i++){
     const x=i/(N-1)*inA[inA.length-1];
     let k=0; while(k<inA.length-2 && x>inA[k+1])k++;
     const t=clamp((x-inA[k])/(inA[k+1]-inA[k]),0,1);
-    // Hermite avec tangentes limitées (monotonic)
     const m0=k>0? (outA[k]-outA[k-1])/(inA[k]-inA[k-1]) : slope;
     const m1=(outA[k+1]-outA[k])/(inA[k+1]-inA[k]);
     const mm=clamp((m0+m1)/2,0, 3*Math.min(Math.abs(m0),Math.abs(m1))|| (m0+m1)/2);
@@ -174,7 +253,7 @@ function buildToneLUT(s,crushAmt,conAmt){
   }
   return lutT;
 }
-function applyTone(lutT,v){ // v linéaire [0,1]
+function applyTone(lutT,v){
   const N=lutT.length-1, x=clamp(v,0,1)*N, i=Math.min(Math.floor(x),N-1), f=x-i;
   return lutT[i]*(1-f)+lutT[i+1]*f;
 }
@@ -184,36 +263,27 @@ function generateLUT(size){
   if(!refStats)return;
   const s=refStats;
   const intA=+$('intensity').value/100;
-  const satA=(+$('sat').value/100)*( (s.sat!==undefined)?1:1 );
+  const satA=(+$('sat').value/100);
   const warmA=+$('warm').value/100;
   const crushA=+$('crush').value/100;
   const conA=(+$('con').value/100);
-  // auto : cible de saturation = ratio ref vs neutre typique (0.33)
   const satTarget=clamp(s.sat/0.33,0,2)*(satA);
-  // auto crush : plus les noirs de la ref sont bas, plus on écrase
   const autoCrush=clamp((0.01-Math.min(s.p5,0.01))*40,0,0.6);
-  const crush=Math.abs(crushA-0.5)<0.01?autoCrush:crushA; // position 50% = auto
+  const crush=Math.abs(crushA-0.5)<0.01?autoCrush:crushA;
   const lutT=buildToneLUT(s,crush,conA);
-  // chaleur : gains par canal appliqués selon la luminance (ombres vs HL)
   const wLoRef=Math.log2(Math.max(s.warmLo,0.05)), wHiRef=Math.log2(Math.max(s.warmHi,0.05));
   const warmth=warmA===0?1:(1+warmA*0.5);
   const wLo=1+wLoRef*0.5*warmth, wHi=1+wHiRef*0.5*warmth;
 
   const data=[];
   for(let bi=0;bi<size;bi++)for(let gi=0;gi<size;gi++)for(let ri=0;ri<size;ri++){
-    // entrée LUT = sRGB codé (standard Resolve), décodage en linéaire
     let r=srgb2lin(ri/(size-1)), g=srgb2lin(gi/(size-1)), b=srgb2lin(bi/(size-1));
-    const y0=0.2126*r+0.7152*g+0.0722*b;
-    // tone curve par canal (RGB driver) — précision accrue vs courbe luminance seule
     let R=applyTone(lutT,r), G=applyTone(lutT,g), B=applyTone(lutT,b);
-    // saturation : chroma scalable autour de la luminance tonemapée
     const y=0.2126*R+0.7152*G+0.0722*B;
     R=y+(R-y)*satTarget; G=y+(G-y)*satTarget; B=y+(B-y)*satTarget;
-    // chaleur dépendante de l'exposition (ombres vs HL)
-    const w=clamp(y*3,0,1); // 0=ombres 1=HL
-    const kR=1+ ( (wLo+(wHi-wLo)*w) -1 ), kB=1/ (wLo+(wHi-wLo)*w);
-    R*=kR; B*=kB; G*=1;
-    // blend intensité en linéaire
+    const w=clamp(y*3,0,1);
+    const kR=wLo+(wHi-wLo)*w;
+    R*=kR; B*=1/kR;
     r=r*(1-intA)+R*intA; g=g*(1-intA)+G*intA; b=b*(1-intA)+B*intA;
     data.push(clamp(lin2srgb(clamp(r,0,1)),0,1), clamp(lin2srgb(clamp(g,0,1)),0,1), clamp(lin2srgb(clamp(b,0,1)),0,1));
   }
@@ -222,15 +292,16 @@ function generateLUT(size){
   applyPreview();
 }
 
-// ---------- Prévisualisation ----------
+// ---------- Prévisualisation avant/après ----------
 function applyPreview(){
   const img=$('imgPrev'); if(!img.src||!lut)return;
   const cv=$('cvPrev');
-  cv.width=img.naturalWidth; cv.height=img.naturalHeight; cv.style.display='block'; $('imgPrev').style.display='none';
+  cv.width=img.naturalWidth; cv.height=img.naturalHeight;
+  $('baEmpty').style.display='none'; $('baPrev').style.display='block';
   const ctx=cv.getContext('2d'); ctx.drawImage(img,0,0);
   const id=ctx.getImageData(0,0,cv.width,cv.height); const d=id.data;
   const S=lut.size, D=lut.data;
-  const idx=(r,g,b)=>{ // trilin simplifiée : nearest (rapide, LUT 65³ suffisant)
+  const idx=(r,g,b)=>{
     const ri=Math.round(r*(S-1)), gi=Math.round(g*(S-1)), bi=Math.round(b*(S-1));
     return ((bi*S+gi)*S+ri)*3;
   };
@@ -241,11 +312,24 @@ function applyPreview(){
   ctx.putImageData(id,0,0);
 }
 
+// Slider avant/après (souris + tactile)
+(function(){
+  const ba=$('baPrev'), handle=$('baHandle');
+  let dragging=false;
+  const set=x=>{const r=ba.getBoundingClientRect();const pct=clamp((x-r.left)/r.width*100,0,100);ba.style.setProperty('--split',pct+'%');};
+  const start=e=>{dragging=true;set((e.touches?e.touches[0]:e).clientX);};
+  const move=e=>{if(!dragging)return;e.preventDefault();set((e.touches?e.touches[0]:e).clientX);};
+  const end=()=>dragging=false;
+  ba.addEventListener('mousedown',start); ba.addEventListener('touchstart',start,{passive:true});
+  window.addEventListener('mousemove',move); window.addEventListener('touchmove',move,{passive:false});
+  window.addEventListener('mouseup',end); window.addEventListener('touchend',end);
+})();
+
 // ---------- Export .cube (spec Autodesk) ----------
 function download(){
   if(!lut)return;
   const S=lut.size;
-  let out=`# Created with Colour Grade Tool v2\n# look derived from reference shot (linear-light percentile match)\nLUT_3D_SIZE ${S}\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n`;
+  let out=`# Created with Colour Grade Tool v3\n# look derived from reference shot (linear-light percentile match)\nLUT_3D_SIZE ${S}\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n`;
   const D=lut.data;
   for(let i=0;i<D.length;i+=3){
     out+=D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6)+'\n';
@@ -255,8 +339,11 @@ function download(){
 }
 
 // ---------- Wiring ----------
-setupDrop('dropRef','imgRef',{imgId:'imgRef',fn:img=>{refStats=analyze(img);showStats(refStats);generateLUT(+$('lutSize').value);}});
-setupDrop('dropPrev','imgPrev',{imgId:'imgPrev',fn:()=>applyPreview()});
+setupDrop('dropRef',{imgId:'imgRef',fn:img=>{
+  $('imgRef').style.display='block'; $('ringRef').style.display='none'; $('tagRef').style.display='block';
+  refStats=analyze(img);showStats(refStats);generateLUT(+$('lutSize').value);
+}});
+setupDrop('dropPrev',{imgId:'imgPrev',fn:()=>applyPreview()});
 ['intensity','sat','warm','crush','con'].forEach(id=>$(id).addEventListener('input',()=>{
   $('vInt').textContent=$('intensity').value+'%';
   $('vSat').textContent=$('sat').value==100?'auto':$('sat').value+'%';
