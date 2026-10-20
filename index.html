@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Colour Grade Tool v3.1.1 — Ref shot vers LUT .cube pour DaVinci Resolve. Tétraédrique, score ΔE, presets. 100% local.">
-<title>Colour Grade Tool v3.1 — Ref Shot → LUT .cube</title>
+<meta name="description" content="Colour Grade Tool v3.1.2 — Ref shot vers LUT .cube pour DaVinci Resolve. Tétraédrique, score ΔE, presets. 100% local.">
+<title>Colour Grade Tool v3.1.2 — Ref Shot → LUT .cube</title>
 <style>
   :root{--bg:#0e0e10;--bg2:#131316;--panel:#1b1b1f;--panel2:#222227;--acc:#e8a33d;--acc2:#f0b95e;--txt:#eaeaea;--mut:#8a8a90;--line:#2b2b31;--radius:14px;--ok:#5ec26a;--warn:#e0b23d;--bad:#e05a4b;}
   *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
@@ -36,16 +36,18 @@
   .ba__handle::after{content:'⇔';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--acc);color:#111;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.5);}
   .ba__empty{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--mut);font-size:.82rem;gap:10px;}
   .ba__empty .drop__ico{font-size:1.8rem;opacity:.6;}
-  .descore{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;display:flex;align-items:center;gap:18px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
-  .descore__num{font-size:1.6rem;font-weight:800;color:var(--mut);min-width:74px;text-align:center;font-variant-numeric:tabular-nums;}
-  .descore--ok .descore__num{color:var(--ok);} .descore--warn .descore__num{color:var(--warn);} .descore--bad .descore__num{color:var(--bad);}
-  .descore__txt{font-size:.78rem;color:var(--mut);line-height:1.55;} .descore__txt b{color:var(--txt);}
+  .descore{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;display:flex;align-items:center;gap:20px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .descore__num{font-size:2rem;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums;min-width:110px;text-align:center;}
+  .descore__txt{font-size:.8rem;color:var(--mut);line-height:1.55;} .descore__txt b{color:var(--txt);}
+  .descore--ok{border-color:rgba(94,194,106,.5);} .descore--ok .descore__num{color:var(--ok);}
+  .descore--warn{border-color:rgba(224,178,61,.5);} .descore--warn .descore__num{color:var(--warn);}
+  .descore--bad{border-color:rgba(224,90,75,.5);} .descore--bad .descore__num{color:var(--bad);}
   .stats{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;font-size:.8rem;display:none;box-shadow:0 8px 30px rgba(0,0,0,.35);}
   .stats h3{font-size:.7rem;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:10px;}
   .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:4px 24px;}
   .statrow{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);}
   .statrow b{font-weight:600;color:var(--acc2);font-variant-numeric:tabular-nums;}
-  .controls{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .controls{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:0 8px 30px rgba(0,0,0,.35);margin-bottom:18px;}
   .ctl{margin-bottom:14px;}
   .ctl label{display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:5px;color:#c9c9cf;}
   .ctl label span{color:var(--acc);font-weight:600;font-variant-numeric:tabular-nums;}
@@ -65,7 +67,7 @@
 <body>
 <header class="top">
   <h1>Colour <b>Grade</b> Tool</h1>
-  <span class="badge">v3.1.1</span>
+  <span class="badge">v3.1.2</span>
 </header>
 <p class="sub">Charge une <b>image de référence</b> (le look visé), puis une <b>frame de tes rushes</b> pour prévisualiser le résultat avec un slider avant/après. Export en <b>LUT .cube</b> pour DaVinci Resolve. Aucune image n'est envoyée sur un serveur.</p>
 
@@ -136,23 +138,26 @@
   </div>
 
   <div class="row">
-    <select id="lutSize"><option value="33">LUT 33³ (standard)</option><option value="65" selected>LUT 65³ (haute précision)</option></select>
-    <button id="btnDl" disabled>⬇ Télécharger la LUT .cube</button>
-    <button class="sec" id="btnReset">Réinitialiser</button>
+    <button id="btnDl">⬇ Exporter la LUT .cube</button>
+    <button id="btnReset" class="sec">↺ Reset</button>
+    <select id="lutSize">
+      <option value="33" selected>LUT 33³ (rapide)</option>
+      <option value="65">LUT 65³ (précise)</option>
+    </select>
   </div>
   <div class="row">
-    <input type="text" id="presetName" placeholder="Nom du preset (ex. Brume désaturée)">
-    <button class="sec" id="btnSave">💾 Sauver preset</button>
-    <select id="presetList"><option value="">— Presets sauvegardés —</option></select>
-    <button class="sec" id="btnLoad">Charger</button>
-    <button class="sec" id="btnDel">🗑</button>
+    <input type="text" id="presetName" placeholder="Nom du preset…">
+    <button id="btnSave" class="sec">💾 Save</button>
+    <select id="presetList"><option>— Presets sauvegardés —</option></select>
+    <button id="btnLoad" class="sec">Charger</button>
+    <button id="btnDel" class="sec">🗑</button>
   </div>
-  <p class="note"><b>Moteur v3.1</b> : traitement en espace <b>lumière linéaire</b> (sRGB IEC 61966-2-1), courbe de tonalité ancrée sur les <b>percentiles P1–P99</b> (interpolation monotone), transfert statistique type Reinhard 2001, réglages par zones (ombres / mids / highs avec pondération gaussienne), prévisualisation par <b>interpolation tétraédrique</b> de la LUT 3D (pas de banding), score de fidélité <b>ΔE CIEDE2000</b>, presets en <b>localStorage</b>. Export conforme à la spec <b>.cube Autodesk/ASC</b>.</p>
+  <div class="note"><b>Conseil :</b> utilise une frame de rush dont le contenu ressemble à la référence (cadrage, exposition) pour un match optimal. La LUT s'applique à l'image entière — pour un grading par plans, génère une LUT par type de plan.</div>
 </div>
 
 <script>
 const $=id=>document.getElementById(id);
-let refStats=null, lut=null, prevImg=null, prevURL=null, refURL=null;
+let refStats=null,lut=null,prevImg=null;
 
 // ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
 function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
@@ -228,8 +233,19 @@ function sampleImg(img){
   const area=65000, aspect=img.width/img.height;
   const W=Math.max(1,Math.round(Math.sqrt(area*aspect))),H=Math.max(1,Math.round(area/W));
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
-  const ctx=cv.getContext('2d');ctx.drawImage(img,0,0,W,H);
+  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,W,H);
   return {data:ctx.getImageData(0,0,W,H).data,n:W*H};
+}
+
+// ---------- Chaleur de zone bornée et conditionnée au signal ----------
+// Ratio R/B fiable uniquement si la zone contient assez de lumière et de bleu.
+// Sinon → neutre (1.0). Toujours borné [0.6, 1.6] pour éviter toutembalance extrême.
+function zoneWarmth(sr,sb,count,globalB){
+  if(!count)return 1;
+  const mr=sr/count, mb=sb/count;
+  if(mr+mb<0.01)return 1;                              // zone trop sombre : pas de signal chromatique fiable
+  if(mb<Math.max(0.006,globalB*0.2))return 1;          // bleu quasi absent : ratio non significatif
+  return clamp(mr/mb,0.6,1.6);
 }
 
 // ---------- Analyse de la référence ----------
@@ -254,8 +270,8 @@ function analyze(img){
   return {
     p1:p(0.01),p5:p(0.05),p25:p(0.25),p50:p(0.50),p75:p(0.75),p95:p(0.95),p99:p(0.99),
     sat:satSum/n,
-    warmLo:cLo?(sLoR/cLo)/Math.max(sLoB/cLo,1e-6):1,
-    warmHi:cHi?(sHiR/cHi)/Math.max(sHiB/cHi,1e-6):1,
+    warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
+    warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
     meanR:mr,meanG:mg,meanB:mb
   };
 }
@@ -331,9 +347,10 @@ function generateLUT(size){
   const autoCrush=clamp((0.01-Math.min(s.p5,0.01))*40,0,0.6);
   const crush=Math.abs(crushA-0.5)<0.01?autoCrush:crushA;
   const lutT=buildToneLUT(s,crush,conA);
-  const wLoRef=Math.log2(Math.max(s.warmLo,0.05)),wHiRef=Math.log2(Math.max(s.warmHi,0.05));
+  // Chaleur auto issue de la référence : bornée, proportionnelle à l'intensité.
   const warmth=warmA===0?1:(1+warmA*0.5);
-  const wLo=1+wLoRef*0.5*warmth,wHi=1+wHiRef*0.5*warmth;
+  const wLo=1+clamp((s.warmLo-1)*0.5*warmth,-0.35,0.35)*intA;
+  const wHi=1+clamp((s.warmHi-1)*0.5*warmth,-0.35,0.35)*intA;
   const data=new Float32Array(size*size*size*3);
   let k=0;
   for(let bi=0;bi<size;bi++)for(let gi=0;gi<size;gi++)for(let ri=0;ri<size;ri++){
@@ -349,18 +366,67 @@ function generateLUT(size){
     const wf=(z.shW*wSh+z.mdW*wMd+z.hiW*wHi)/wSum;
     const ef=Math.pow(2,expo*0.6*intA);
     R*=ef;G*=ef;B*=ef;
-    R+=wf*0.08*intA;B-=wf*0.08*intA;
-    // Warmth global
-    R*=wLo+(wHi-wLo)*y; G*=1; B*=(2-wLo-(wHi-wLo)*y)*0.5+0.5;
-    // Mélange avec l'original selon l'intensité
-    R=r0+(R-r0)*intA; G=g0+(G-g0)*intA; B=b0+(B-b0)*intA;
-    data[k++]=clamp(lin2srgb(clamp(R,0,1)),0,1);
-    data[k++]=clamp(lin2srgb(clamp(G,0,1)),0,1);
-    data[k++]=clamp(lin2srgb(clamp(B,0,1)),0,1);
+    // Chaleur de zone manuelle : décalage R/B compensé (préserve la luminance perçue)
+    const warmOff=wf*0.08*intA;
+    R+=warmOff;B-=warmOff;
+    // Chaleur auto (reference match) : interpolée ombres → hautes lumières, R up / B down
+    const tW=clamp((y-0.18)/0.6,0,1);
+    const wAuto=wLo+(wHi-wLo)*tW;
+    R*=wAuto;B/=Math.max(wAuto,0.25);
+    data[k++]=clamp(R,0,1);data[k++]=clamp(G,0,1);data[k++]=clamp(B,0,1);
   }
   lut={size,data};
-  $('btnDl').disabled=false;
   if(prevImg)renderPrev(prevImg);
+}
+
+// ---------- Interpolation tétraédrique de la LUT ----------
+function lutTetra(r,g,b){
+  const S=lut.size,D=lut.data;
+  const x=clamp(r,0,1)*(S-1),y=clamp(g,0,1)*(S-1),z=clamp(b,0,1)*(S-1);
+  const i0=Math.min(Math.floor(x),S-2),j0=Math.min(Math.floor(y),S-2),k0=Math.min(Math.floor(z),S-2);
+  const fx=x-i0,fy=y-j0,fz=z-k0;
+  const idx=(i,j,k)=>(k*S*S+j*S+i)*3;
+  // Sommets du cube unité
+  const c000=idx(i0,j0,k0),   c100=idx(i0+1,j0,k0),   c010=idx(i0,j0+1,k0),   c110=idx(i0+1,j0+1,k0);
+  const c001=idx(i0,j0,k0+1), c101=idx(i0+1,j0,k0+1), c011=idx(i0,j0+1,k0+1),c111=idx(i0+1,j0+1,k0+1);
+  let out=[0,0,0];
+  // Dispatch standard (ordre décroissant des deltas) — 6 tétraèdres
+  let a=fx,b2=fy,c=fz;
+  const acc=(w,iA,iB,iC)=>{out[0]+=w*D[iA];out[1]+=w*D[iB];out[2]+=w*D[iC];};
+  if(fx>fy){
+    if(fy>fz){        // fx>fy>fz : R>G>B
+      acc(fx,D[c100],D[c100+1],D[c100+2]);
+      acc(fy,D[c110],D[c110+1],D[c110+2]);
+      acc(fz,D[c111],D[c111+1],D[c111+2]);
+    }else if(fx>fz){  // fx>fz>fy : R>B>G
+      acc(fx,D[c100],D[c100+1],D[c100+2]);
+      acc(fz,D[c101],D[c101+1],D[c101+2]);
+      acc(fy,D[c111],D[c111+1],D[c111+2]);
+    }else{            // fz>fx>fy : B>R>G
+      acc(fz,D[c001],D[c001+1],D[c001+2]);
+      acc(fx,D[c101],D[c101+1],D[c101+2]);
+      acc(fy,D[c111],D[c111+1],D[c111+2]);
+    }
+  }else{
+    if(fz>fy){        // fz>fy>fx : B>G>R
+      acc(fz,D[c001],D[c001+1],D[c001+2]);
+      acc(fy,D[c011],D[c011+1],D[c011+2]);
+      acc(fx,D[c111],D[c111+1],D[c111+2]);
+    }else if(fx>fz){  // fy>fx>fz : G>R>B
+      acc(fy,D[c010],D[c010+1],D[c010+2]);
+      acc(fx,D[c110],D[c110+1],D[c110+2]);
+      acc(fz,D[c111],D[c111+1],D[c111+2]);
+    }else{            // fy>fz>fx : G>B>R
+      acc(fy,D[c010],D[c010+1],D[c010+2]);
+      acc(fz,D[c011],D[c011+1],D[c011+2]);
+      acc(fx,D[c111],D[c111+1],D[c111+2]);
+    }
+  }
+  const base=idx(i0,j0,k0);
+  out[0]=(1-fx-fy-fz)*D[base]+out[0];
+  out[1]=(1-fx-fy-fz)*D[base+1]+out[1];
+  out[2]=(1-fx-fy-fz)*D[base+2]+out[2];
+  return [clamp(out[0],0,1),clamp(out[1],0,1),clamp(out[2],0,1)];
 }
 
 // ---------- Lab moyen de la référence (pour ΔE) ----------
@@ -376,37 +442,22 @@ function showDE(de){
   let cls,txt;
   if(de<2){cls='descore--ok';txt='<b>ΔE '+fmt(de,1)+' — Excellent match 🟢</b><br>Le look gradé est quasi imperceptiblement différent de la référence. Tu peux exporter la LUT en confiance.';}
   else if(de<5){cls='descore--warn';txt='<b>ΔE '+fmt(de,1)+' — Bon match 🟡</b><br>Différences légères visibles côte à côte. Ajuste saturation / chaleur / zones pour affiner.';}
-  else{cls='descore--bad';txt='<b>ΔE '+fmt(de,1)+' — Match approximatif 🔴</b><br>Le look s\'écarte nettement de la référence. Vérifie que la frame de rush est comparable à la référence (exposition, contenu).';}
+  else{cls='descore--bad';txt='<b>ΔE '+fmt(de,1)+' — Match approximatif 🔴</b><br>Le look s\'écarte nettement de la référence. Vérifie que la frame de rush est comparable à la référence (exposition, contenu). Le ΔE mesure la ressemblance globale moyenne — deux images de contenu différent peuvent afficher un ΔE élevé sans que le look soit faux.';}
   box.classList.add(cls);
   $('deNum').textContent=fmt(de,1);
   $('deTxt').innerHTML=txt;
 }
 
-// ---------- Interpolation tétraédrique (dispatch 6 tétraèdres) ----------
-function lutTetra(r,g,b){
-  const S=lut.size,D=lut.data;
-  const x=r*(S-1),y=g*(S-1),z=b*(S-1);
-  const x0=Math.min(Math.floor(x),S-2),y0=Math.min(Math.floor(y),S-2),z0=Math.min(Math.floor(z),S-2);
-  const fx=x-x0,fy=y-y0,fz=z-z0;
-  const idx=(i,j,k)=>((k*S+j)*S+i)*3;
-  const c=[[x0,y0,z0],[x0+1,y0,z0],[x0,y0+1,z0],[x0+1,y0+1,z0],
-           [x0,y0,z0+1],[x0+1,y0,z0+1],[x0,y0+1,z0+1],[x0+1,y0+1,z0+1]];
-  const v=c.map(q=>[D[idx(q[0],q[1],q[2])],D[idx(q[0],q[1],q[2])+1],D[idx(q[0],q[1],q[2])+2]]);
-  const out=[0,0,0];
-  for(let ch=0;ch<3;ch++){
-    let val;
-    if(fx>fy){
-      if(fy>fz)       val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fy*(v[3][ch]-v[1][ch])+fz*(v[7][ch]-v[3][ch]);
-      else if(fx>fz)  val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fz*(v[5][ch]-v[1][ch])+fy*(v[7][ch]-v[5][ch]);
-      else            val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fx*(v[5][ch]-v[4][ch])+fy*(v[7][ch]-v[5][ch]);
-    }else{
-      if(fz>fy)       val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fy*(v[6][ch]-v[4][ch])+fx*(v[7][ch]-v[6][ch]);
-      else if(fx>fz)  val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fx*(v[3][ch]-v[2][ch])+fz*(v[7][ch]-v[3][ch]);
-      else            val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fz*(v[6][ch]-v[2][ch])+fx*(v[7][ch]-v[6][ch]);
-    }
-    out[ch]=clamp(val,0,1);
-  }
-  return out;
+function syncLabels(){
+  $('vInt').textContent=$('intensity').value+'%';
+  $('vSat').textContent=$('sat').value==100?'auto':$('sat').value+'%';
+  $('vWarm').textContent=$('warm').value==0?'auto':$('warm').value;
+  $('vCrush').textContent=$('crush').value==50?'auto':$('crush').value;
+  $('vCon').textContent=$('con').value==100?'auto':$('con').value+'%';
+  ['Sh','Md','Hi'].forEach(z=>{
+    $('vZ'+z).textContent=(+$('z'+z).value/100).toFixed(2);
+    $('vZ'+z+'W').textContent=$('z'+z+'W').value;
+  });
 }
 
 // ---------- Rendu de la prévisualisation ----------
@@ -455,7 +506,7 @@ function renderPrev(img){
 function download(){
   if(!lut)return;
   const S=lut.size;
-  let out='# Created with Colour Grade Tool v3.1\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
+  let out='# Created with Colour Grade Tool v3.1.2\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
   const D=lut.data;
   for(let i=0;i<D.length;i+=3){
     out+=D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6)+'\n';
@@ -493,18 +544,6 @@ function deletePreset(){
   const name=$('presetList').value;if(!name)return;
   const ps=loadPresets();delete ps[name];
   localStorage.setItem(PKEY,JSON.stringify(ps));refreshPresetList();
-}
-
-function syncLabels(){
-  $('vInt').textContent=$('intensity').value+'%';
-  $('vSat').textContent=$('sat').value==100?'auto':$('sat').value+'%';
-  $('vWarm').textContent=$('warm').value==0?'auto':$('warm').value;
-  $('vCrush').textContent=$('crush').value==50?'auto':$('crush').value;
-  $('vCon').textContent=$('con').value==100?'auto':$('con').value+'%';
-  ['Sh','Md','Hi'].forEach(z=>{
-    $('vZ'+z).textContent=(+$('z'+z).value/100).toFixed(2);
-    $('vZ'+z+'W').textContent=$('z'+z+'W').value;
-  });
 }
 
 // ---------- Wiring ----------
