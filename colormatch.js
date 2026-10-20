@@ -1,153 +1,92 @@
 /*
- * Colour Grade Tool — Module d'auto-match colorimétrique v1.0
- * ------------------------------------------------------------------
- * Algorithmes :
- *   1. Reinhard et al. 2001 — transfert statistique de couleur en Lab
- *      (moyenne + écart-type de la référence appliqués au rush)
- *   2. Optimisation par descente de gradient sur le score CIEDE2000
- *      (affine les paramètres exposition/contraste/saturation/chaleur)
- *
- * Intégration (2 lignes dans index.html) :
- *   avant </body> :  <script src="colormatch.js"></script>
- *   dans la <div class="row"> des boutons :
- *     <button id="btnAuto" class="sec">🎯 Match auto</button>
- *
- * Le module expose run via CGT_AUTOMATCH ; index.html possède le listener.
+ * Colour Grade Tool — module d'auto-match colorimétrique.
+ * Expose : window.CGT_AUTOMATCH = { run, labStats, reinhardMap, autoTune }.
  */
 (function(){
   'use strict';
 
-  // ---------- Espace Lab (réutilise les fonctions globales si présentes) ----------
-  const S2L = window.srgb2lin || (c => c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4));
-  const L2S = window.lin2srgb || (c => c<=0.0031308 ? c*12.92 : 1.055*Math.pow(c,1/2.4)-0.055);
-  const clamp = (x,a,b)=>Math.min(b,Math.max(a,x));
-  const rgb2lab = window.rgb2lab || function(r,g,b){
-    const X=0.4124*r+0.3576*g+0.1805*b, Y=0.2126*r+0.7152*g+0.0722*b, Z=0.0193*r+0.1192*g+0.9505*b;
-    const f=t=>t>0.008856?Math.cbrt(t):(903.3*t+16)/116;
-    const fx=f(X/0.95047),fy=f(Y),fz=f(Z/1.08883);
+  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+  const finite=(x,fallback=0)=>Number.isFinite(x)?x:fallback;
+  const S2L=window.srgb2lin||function(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);};
+  const L2S=window.lin2srgb||function(c){return c<=0.0031308?c*12.92:1.055*Math.pow(c,1/2.4)-0.055;};
+  const rgb2lab=window.rgb2lab||function(r,g,b){
+    const X=.4124*r+.3576*g+.1805*b,Y=.2126*r+.7152*g+.0722*b,Z=.0193*r+.1192*g+.9505*b;
+    const f=t=>t>.008856?Math.cbrt(t):(903.3*t+16)/116;
+    const fx=f(X/.95047),fy=f(Y),fz=f(Z/1.08883);
     return [116*fy-16,500*(fx-fy),200*(fy-fz)];
   };
-  function lab2rgb(L,a,bb){
-    const fy=(L+16)/116, fx=fy+a/500, fz=fy-bb/200;
-    const fi=t=>{const t3=t*t*t;return t3>0.008856?t3:(116*t-16)/903.3;};
-    const X=0.95047*fi(fx), Y=fi(fy), Z=1.08883*fi(fz);
-    const r= 3.2406*X-1.5372*Y-0.4986*Z,
-          g=-0.9689*X+1.8758*Y+0.0415*Z,
-          b= 0.0557*X-0.2040*Y+1.0570*Z;
-    return [clamp(L2S(r),0,1),clamp(L2S(g),0,1),clamp(L2S(b),0,1)];
+  function lab2rgb(L,a,b){
+    const fy=(L+16)/116,fx=fy+a/500,fz=fy-b/200;
+    const fi=t=>{const q=t*t*t;return q>.008856?q:(116*t-16)/903.3;};
+    const X=.95047*fi(fx),Y=fi(fy),Z=1.08883*fi(fz);
+    return [clamp(L2S(3.2406*X-1.5372*Y-.4986*Z),0,1),clamp(L2S(-.9689*X+1.8758*Y+.0415*Z),0,1),clamp(L2S(.0557*X-.204*Y+1.057*Z),0,1)];
   }
+  const dE2000=window.deltaE2000||function(l1,a1,b1,l2,a2,b2){return Math.hypot(l1-l2,a1-a2,b1-b2);};
 
-  // ---------- CIEDE2000 (localement, pour l'optimisation) ----------
-  const dE2000 = window.deltaE2000 || function(l1,a1,b1,l2,a2,b2){
-    // version simplifiée CIE76 si le module principal n'expose pas CIEDE2000
-    return Math.sqrt((l1-l2)**2+(a1-a2)**2+(b1-b2)**2);
-  };
-
-  // ---------- Stats Lab d'une image (canvas source) ----------
   function labStats(canvas){
-    const ctx=canvas.getContext('2d',{willReadFrequently:true});
-    const d=ctx.getImageData(0,0,canvas.width,canvas.height).data;
-    let sL=0,sA=0,sB=0,sL2=0,sA2=0,sB2=0,n=0;
-    for(let i=0;i<d.length;i+=16){ // échantillonnage 1/4 px
-      const [L,a,b]=rgb2lab(S2L(d[i]/255),S2L(d[i+1]/255),S2L(d[i+2]/255));
-      sL+=L;sA+=a;sB+=b;sL2+=L*L;sA2+=a*a;sB2+=b*b;n++;
+    if(!canvas||!canvas.width||!canvas.height)return {m:[0,0,0],s:[0,0,0],n:0};
+    let d;try{d=canvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,canvas.width,canvas.height).data;}catch(e){return {m:[0,0,0],s:[0,0,0],n:0};}
+    let sl=0,sa=0,sb=0,sl2=0,sa2=0,sb2=0,n=0;
+    for(let i=0;i+2<d.length;i+=16){
+      const q=rgb2lab(S2L(d[i]/255),S2L(d[i+1]/255),S2L(d[i+2]/255));
+      if(!q.every(Number.isFinite))continue;
+      sl+=q[0];sa+=q[1];sb+=q[2];sl2+=q[0]*q[0];sa2+=q[1]*q[1];sb2+=q[2]*q[2];n++;
     }
-    const mL=sL/n,mA=sA/n,mB=sB/n;
-    return {m:[mL,mA,mB], s:[Math.sqrt(Math.max(sL2/n-mL*mL,0)),
-                             Math.sqrt(Math.max(sA2/n-mA*mA,0)),
-                             Math.sqrt(Math.max(sB2/n-mB*mB,0))], n};
+    if(!n)return {m:[0,0,0],s:[0,0,0],n:0};
+    const m=[sl/n,sa/n,sb/n];
+    return {m,s:[Math.sqrt(Math.max(0,sl2/n-m[0]*m[0])),Math.sqrt(Math.max(0,sa2/n-m[1]*m[1])),Math.sqrt(Math.max(0,sb2/n-m[2]*m[2]))],n};
   }
-
-  // ---------- Reinhard : (x - μ_rush) * (σ_ref/σ_rush) + μ_ref ----------
   function reinhardMap(r,g,b,ref,rush){
-    const [L,a,bb]=rgb2lab(S2L(r),S2L(g),S2L(b));
-    const out=[0,1,2].map(i=>{
-      const sc=ref.s[i]/Math.max(rush.s[i],0.5);
-      return clamp((([L,a,bb][i])-rush.m[i])*sc+ref.m[i],0,100);
-    });
+    if(!ref||!rush||!ref.n||!rush.n)return [clamp(r,0,1),clamp(g,0,1),clamp(b,0,1)];
+    const q=rgb2lab(S2L(r),S2L(g),S2L(b));
+    const out=q.map((v,i)=>clamp((v-rush.m[i])*(ref.s[i]/Math.max(rush.s[i],.5))+ref.m[i],0,100));
     return lab2rgb(out[0],out[1],out[2]);
   }
 
-  // ---------- Descente de gradient sur les paramètres du tool ----------
-  // Objective : minimiser ΔE2000 moyen entre rush gradé et référence,
-  // en ajustant [contraste, saturation, chaleur, exposition zones].
-  function autoTune(sampleFn, refSamples, init, steps){
-    const keys=Object.keys(init);
-    const p={...init};
-    const cost=pp=>{
-      let s=0,n=0;
-      for(const [r,g,b,labRef] of refSamples){
-        const out=sampleFn(r,g,b,pp);
-        const lab=rgb2lab(S2L(out[0]),S2L(out[1]),S2L(out[2]));
-        s+=dE2000(lab[0],lab[1],lab[2],labRef[0],labRef[1],labRef[2]);n++;
-      }
-      return s/n;
-    };
-    let c=cost(p);
-    const lr={};keys.forEach(k=>lr[k]=steps[k]||0.05);
-    for(let it=0;it<60;it++){
-      for(const k of keys){
-        const bak=p[k];
-        p[k]=bak+lr[k];const cUp=cost(p);
-        p[k]=bak-lr[k];const cDn=cost(p);
-        if(cUp<c&&cUp<=cDn){p[k]=bak+lr[k];c=cUp;}
-        else if(cDn<c){p[k]=bak-lr[k];c=cDn;}
-        else p[k]=bak;
-        lr[k]=Math.max(lr[k]*0.97,0.005);
-      }
-      if(c<0.8)break;
-    }
-    return {params:p,score:c};
+  function autoTune(sampleFn,refSamples,init,steps){
+    const p=Object.assign({},init||{}),keys=Object.keys(p||{}),step=Object.assign({},steps||{});
+    const samples=Array.isArray(refSamples)?refSamples:[];
+    const cost=pp=>{let sum=0,n=0;for(const item of samples){const out=sampleFn(item[0],item[1],item[2],pp);if(!out||out.length<3)continue;const lab=rgb2lab(S2L(out[0]),S2L(out[1]),S2L(out[2]));const ref=item[3];if(lab.every(Number.isFinite)&&ref&&ref.every(Number.isFinite)){const e=dE2000(...lab,...ref);if(Number.isFinite(e)){sum+=e;n++;}}}return n?sum/n:Infinity;};
+    let best=cost(p);for(let pass=0;pass<3;pass++)for(const k of keys){const base=p[k],delta=Math.max(Math.abs(step[k]||1)*Math.pow(.5,pass),.01);let val=base,score=best;for(const v of [base+delta,base-delta]){p[k]=v;const c=cost(p);if(c<score){score=c;val=v;}}p[k]=val;best=score;}return {params:p,score:finite(best,Infinity)};
   }
 
-  // ---------- Point d'entrée UI ----------
-  function init(){
-    const btn=document.getElementById('btnAuto');
-    const run=()=>{
-      if(typeof refStats==='undefined'||!refStats){alert('Charge d’abord une image de référence.');return;}
-      if(!prevImg){alert('Charge une frame de rush à prévisualiser.');return;}
-      btn.disabled=true;btn.textContent='⏳ Calcul…';
-      setTimeout(()=>{
-        try{
-          // 1. Stats Lab des deux images
-          const cRush=document.createElement('canvas');
-          const a=Math.min(1,640/prevImg.width);
-          cRush.width=Math.round(prevImg.width*a);cRush.height=Math.round(prevImg.height*a);
-          cRush.getContext('2d').drawImage(prevImg,0,0,cRush.width,cRush.height);
-          const rushSt=labStats(cRush);
-          const refSt={m:[refStats.meanL!==undefined?refStats.meanL:50, 0, 0],
-                       s:[20,20,20]}; // fallback si meanLab absent
-          // Si le tool principal expose les moyennes RVB, on calcule le Lab de la ref
-          if(refStats.meanR!==undefined){
-            const [L,aa,bb2]=rgb2lab(refStats.meanR,refStats.meanG,refStats.meanB);
-            refSt.m=[L,aa,bb2];
-            refSt.s=[Math.max(refStats.p95-refStats.p5,0.02)*110, 14, 14];
-          }
-          // 2. Reinhard : on l'applique comme chaleur auto + saturation suggérées
-          const scL=refSt.s[0]/Math.max(rushSt.s[0],0.5);
-          const satSug=clamp(100*(0.6+0.4*scL),40,160);
-          const conSug=clamp(100*scL,55,150);
-          const warmSug=clamp(Math.round((refSt.m[2]-rushSt.m[2])*2.5),-60,60);
-          // 3. Application aux sliders du tool (s'ils existent)
-          const set=(id,v)=>{const el=document.getElementById(id);if(el){el.value=v;el.dispatchEvent(new Event('input'));}};
-          set('sat',Math.round(satSug));
-          set('con',Math.round(conSug));
-          set('warm',warmSug);
-          if(typeof syncLabels==='function')syncLabels();
-          if(typeof generateLUT==='function')generateLUT(+(document.getElementById('lutSize')||{value:33}).value);
-          if(btn){btn.textContent='🎯 Match auto';btn.disabled=false;}
-        }catch(e){
-          console.error(e);alert('Erreur auto-match : '+e.message);
-          if(btn){btn.textContent='🎯 Match auto';btn.disabled=false;}
-        }
-      },30);
-    };
-    // index.html owns the click listener and invokes the public run API.
-    window.CGT_AUTOMATCH={labStats,reinhardMap,autoTune,run};
+  function imageSamples(refImg,rushImg,maxSide){
+    if(!refImg||!rushImg||!refImg.naturalWidth&& !refImg.width||!rushImg.naturalWidth&& !rushImg.width)return [];
+    const W=Math.min(maxSide||32,refImg.naturalWidth||refImg.width,rushImg.naturalWidth||rushImg.width),H=Math.min(maxSide||32,refImg.naturalHeight||refImg.height,rushImg.naturalHeight||rushImg.height);
+    const a=document.createElement('canvas'),b=document.createElement('canvas');a.width=b.width=W;a.height=b.height=H;
+    const ca=a.getContext('2d'),cb=b.getContext('2d');ca.drawImage(refImg,0,0,W,H);cb.drawImage(rushImg,0,0,W,H);
+    const ra=ca.getImageData(0,0,W,H).data,rb=cb.getImageData(0,0,W,H).data,out=[];
+    for(let i=0;i<ra.length;i+=4){const lab=rgb2lab(S2L(ra[i]/255),S2L(ra[i+1]/255),S2L(ra[i+2]/255));if(lab.every(Number.isFinite))out.push([rb[i]/255,rb[i+1]/255,rb[i+2]/255,lab]);}
+    return out;
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
-  else init();
-
-  // Exposition publique pour usage avancé / tests
-  if(typeof window.CGT_AUTOMATCH==='undefined')window.CGT_AUTOMATCH={labStats,reinhardMap,autoTune};
+  function controls(){return ['sat','con','warm','zSh','zShW','zMd','zMdW','zHi','zHiW'];}
+  function run(opts){
+    opts=opts||{};const btn=document.getElementById('btnAuto');
+    if(typeof refStats==='undefined'||!refStats){if(window.alert)alert('Charge d’abord une image de référence.');return;}
+    if(typeof prevImg==='undefined'||!prevImg){if(window.alert)alert('Charge une frame de rush à prévisualiser.');return;}
+    const apply=(id,v)=>{const el=document.getElementById(id);if(!el)return;const lo=Number(el.min),hi=Number(el.max);el.value=clamp(Math.round(v),lo,hi);el.dispatchEvent(new Event('input'));};
+    if(btn){btn.disabled=true;btn.textContent=opts.deep?'⏳ Optimisation…':'⏳ Calcul…';}
+    const finish=()=>{if(btn){btn.disabled=false;btn.textContent='🎯 Match auto';}};
+    setTimeout(()=>{try{
+      const cv=document.createElement('canvas'),scale=Math.min(1,640/prevImg.width);cv.width=Math.max(1,Math.round(prevImg.width*scale));cv.height=Math.max(1,Math.round(prevImg.height*scale));cv.getContext('2d').drawImage(prevImg,0,0,cv.width,cv.height);
+      const rush=labStats(cv), ref={m:[finite(refStats.meanL,50),0,0],s:[20,20,20],n:1};
+      if(Number.isFinite(refStats.meanR)){const q=rgb2lab(refStats.meanR,refStats.meanG,refStats.meanB);ref.m=q;ref.s=[Math.max(refStats.p95-refStats.p5,.02)*110,14,14];}
+      const sc=ref.s[0]/Math.max(rush.s[0],.5);
+      apply('sat',clamp(100*(.6+.4*sc),40,160));apply('con',clamp(100*sc,55,150));apply('warm',clamp(Math.round((ref.m[2]-rush.m[2])*2.5),-60,60));
+      if(opts.deep){
+        const samples=imageSamples(document.getElementById('imgRef'),prevImg,32),ids=controls(),init={},steps={};
+        ids.forEach(id=>{const el=document.getElementById(id);if(el){init[id]=+el.value;steps[id]=Math.max((+el.max-+el.min)/10,1);}});
+        let cached='';
+        const tuned=autoTune((r,g,b,p)=>{
+          const sig=ids.map(id=>p[id]).join(',');
+          if(sig!==cached){ids.forEach(id=>apply(id,p[id]));if(typeof generateLUT==='function')generateLUT(Math.min(5,+(document.getElementById('lutSize')||{value:5}).value));cached=sig;}
+          return typeof lutTetra==='function'?lutTetra(r,g,b):[r,g,b];
+        },samples,init,steps);
+        ids.forEach(id=>{if(tuned.params[id]!==undefined)apply(id,tuned.params[id]);});
+      }
+      if(typeof syncLabels==='function')syncLabels();if(typeof generateLUT==='function')generateLUT(+(document.getElementById('lutSize')||{value:33}).value);finish();
+    }catch(e){console.error(e);finish();if(window.alert)alert('Erreur auto-match : '+e.message);}},30);
+  }
+  function init(){window.CGT_AUTOMATCH={labStats,reinhardMap,autoTune,run};}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
