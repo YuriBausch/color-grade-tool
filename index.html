@@ -364,50 +364,29 @@ function getZoneVals(){
 
 // ---------- Génération de la LUT 3D ----------
 function generateLUT(size){
-  if(!refStats)return;
-  const s=refStats;
-  const intA=+$('intensity').value/100;
-  const satA=(+$('sat').value/100);
-  const warmA=+$('warm').value/100;
-  const crushA=+$('crush').value/100;
-  const conA=(+$('con').value/100);
-  const z=getZoneVals();
-  const satTarget=clamp(s.sat/0.33,0,2)*(satA);
-  const autoCrush=clamp((0.01-Math.min(s.p5,0.01))*40,0,0.6);
-  const crush=Math.abs(crushA-0.5)<0.01?autoCrush:crushA;
-  const lutT=buildToneLUT(s,crush,conA);
-  // Chaleur auto issue de la référence : bornée, proportionnelle à l'intensité.
-  const warmth=warmA===0?1:(1+warmA*0.5);
-  const wLo=1+clamp((s.warmLo-1)*0.5*warmth,-0.35,0.35)*intA;
-  const wHi=1+clamp((s.warmHi-1)*0.5*warmth,-0.35,0.35)*intA;
-  const data=new Float32Array(size*size*size*3);
-  let k=0;
-  for(let bi=0;bi<size;bi++)for(let gi=0;gi<size;gi++)for(let ri=0;ri<size;ri++){
-    const r0=srgb2lin(ri/(size-1)),g0=srgb2lin(gi/(size-1)),b0=srgb2lin(bi/(size-1));
-    let R=applyTone(lutT,r0),G=applyTone(lutT,g0),B=applyTone(lutT,b0);
-    const y=0.2126*R+0.7152*G+0.0722*B;
-    R=y+(R-y)*satTarget;G=y+(G-y)*satTarget;B=y+(B-y)*satTarget;
-    const wSh=Math.exp(-Math.pow((y-0.18)/0.16,2));
-    const wMd=Math.exp(-Math.pow((y-0.45)/0.18,2));
-    const wHi=Math.exp(-Math.pow((y-0.78)/0.18,2));
-    const wSum=wSh+wMd+wHi;
-    const expo=(z.sh*wSh+z.md*wMd+z.hi*wHi)/wSum;
-    const wf=(z.shW*wSh+z.mdW*wMd+z.hiW*wHi)/wSum;
-    const ef=Math.pow(2,expo*0.6*intA);
-    R*=ef;G*=ef;B*=ef;
-    // Chaleur de zone manuelle : décalage R/B compensé (préserve la luminance perçue)
-    const warmOff=wf*0.08*intA;
-    R+=warmOff;B-=warmOff;
-    // Chaleur auto (reference match) : interpolée ombres → hautes lumières, R up / B down
-    const tW=clamp((y-0.18)/0.6,0,1);
-    const wAuto=wLo+(wHi-wLo)*tW;
-    R*=wAuto;B/=Math.max(wAuto,0.25);
-    data[k++]=clamp(R,0,1);data[k++]=clamp(G,0,1);data[k++]=clamp(B,0,1);
+  // Single source of truth: this is the exact correction optimized by CGT_AUTOMATCH.
+  const n=Math.max(2,Math.round(size||17)), data=new Float32Array(n*n*n*3),
+    p={sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,
+       zSh:+$('zSh').value,zShW:+$('zShW').value,zMd:+$('zMd').value,
+       zMdW:+$('zMdW').value,zHi:+$('zHi').value,zHiW:+$('zHiW').value};
+  function correct(r,g,b){
+    const sat=p.sat/100, con=p.con/100, warm=p.warm/100, lum=.2126*r+.7152*g+.0722*b;
+    let R=(r-.5)*con+.5,G=(g-.5)*con+.5,B=(b-.5)*con+.5;
+    const z=lum<.33?p.zSh/100:lum>.66?p.zHi/100:p.zMd/100;
+    const zw=lum<.33?p.zShW/100:lum>.66?p.zHiW/100:p.zMdW/100;
+    const ex=Math.pow(2,z*.6); R*=ex; G*=ex; B*=ex;
+    const y=.2126*R+.7152*G+.0722*B;
+    R=y+(R-y)*sat; G=y+(G-y)*sat; B=y+(B-y)*sat;
+    const ww=1+warm*.5+zw*.08;
+    return [clamp(R*ww,0,1),clamp(G,0,1),clamp(B/ww,0,1)];
   }
-  lut={size,data};
-  if(prevImg)renderPrev(prevImg);
+  let k=0;
+  for(let bi=0;bi<n;bi++)for(let gi=0;gi<n;gi++)for(let ri=0;ri<n;ri++){
+    const q=correct(srgb2lin(ri/(n-1)),srgb2lin(gi/(n-1)),srgb2lin(bi/(n-1)));
+    data[k++]=q[0];data[k++]=q[1];data[k++]=q[2];
+  }
+  lut={size:n,data}; if(prevImg)renderPrev(prevImg);
 }
-
 // ---------- Interpolation tétraédrique de la LUT ----------
 function lutTetra(r,g,b){
   const S=lut.size,D=lut.data;
@@ -624,6 +603,7 @@ $('btnDel').addEventListener('click',deletePreset);
 syncLabels();refreshPresetList();
 </script>
 <script src="colormatch.js"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
