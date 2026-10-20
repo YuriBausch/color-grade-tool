@@ -153,14 +153,14 @@
 
 <script>
 const $=id=>document.getElementById(id);
-let refStats=null, lut=null, refSample=null, prevImg=null;
+let refStats=null, lut=null, prevImg=null;
 
 // ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
 function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
 function lin2srgb(c){return c<=0.0031308?c*12.92:1.055*Math.pow(c,1/2.4)-0.055;}
 function clamp(x,a,b){return Math.min(b,Math.max(a,x));}
 
-// ---------- Linear sRGB -> Lab (pour ΔE CIEDE2000) ----------
+// ---------- Linear sRGB -> Lab ----------
 function lin2xyz(r,g,b){
   const X=0.4124*r+0.3576*g+0.1805*b, Y=0.2126*r+0.7152*g+0.0722*b, Z=0.0193*r+0.1192*g+0.9505*b;
   return [X/0.95047,Y/1.0,Z/1.08883];
@@ -172,21 +172,25 @@ function xyz2lab(X,Y,Z){
 }
 function rgb2lab(r,g,b){const[x,y,z]=lin2xyz(r,g,b);return xyz2lab(x,y,z);}
 
-// ---------- CIEDE2000 ----------
+// ---------- CIEDE2000 (Sharma et al. 2005) ----------
 function deltaE2000(l1,a1,b1,l2,a2,b2){
   const C1=Math.hypot(a1,b1),C2=Math.hypot(a2,b2),Cm=(C1+C2)/2;
   const G=0.5*(1-Math.sqrt(Math.pow(Cm,7)/(Math.pow(Cm,7)+Math.pow(25,7))));
   const a1p=a1*(1+G),a2p=a2*(1+G);
   const C1p=Math.hypot(a1p,b1),C2p=Math.hypot(a2p,b2);
-  const h1p=Math.atan2(b1,a1p),h2p=Math.atan2(b2,a2p);
+  let h1p=Math.atan2(b1,a1p),h2p=Math.atan2(b2,a2p);
+  if(h1p<0)h1p+=2*Math.PI; if(h2p<0)h2p+=2*Math.PI;
   const dCp=C2p-C1p;
   let dhp=h2p-h1p;
-  if(Math.abs(dhp)>Math.PI)dhp-=Math.sign(dhp)*2*Math.PI;
+  if(dhp>Math.PI)dhp-=2*Math.PI; else if(dhp<-Math.PI)dhp+=2*Math.PI;
   const dLp=l2-l1, dHp=2*Math.sqrt(C1p*C2p)*Math.sin(dhp/2);
   const Lpm=(l1+l2)/2, Cpm=(C1p+C2p)/2;
   let hm=h1p+h2p;
-  if(Math.abs(h1p-h2p)>Math.PI)hm-=Math.sign(hm-(h1p+h2p>Math.PI?0:1))*0+2*Math.PI;
-  hm/=2;
+  if(C1p*C2p!==0){
+    if(Math.abs(h1p-h2p)<=Math.PI)hm/=2;
+    else if(h1p+h2p<2*Math.PI)hm=(h1p+h2p+2*Math.PI)/2;
+    else hm=(h1p+h2p-2*Math.PI)/2;
+  }
   const T=1-0.17*Math.cos(hm-Math.PI/6)+0.24*Math.cos(2*hm)+0.32*Math.cos(3*hm+Math.PI/30)-0.20*Math.cos(4*hm-63*Math.PI/180);
   const dTheta=30*Math.exp(-Math.pow((hm-275*Math.PI/180)/25,2));
   const C7=Math.pow(Cpm,7);
@@ -213,7 +217,7 @@ function handleFile(f,cb){
   img.src=URL.createObjectURL(f);
 }
 
-// ---------- Échantillonnage à surface constante (65k px) ----------
+// ---------- Échantillonnage à surface constante (~65k px) ----------
 function sampleImg(img){
   const area=65000, aspect=img.width/img.height;
   const W=Math.max(1,Math.round(Math.sqrt(area*aspect))),H=Math.max(1,Math.round(area/W));
@@ -265,7 +269,7 @@ function showStats(s){
   $('statsBody').innerHTML=rows.map(r=>`<div class="statrow"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
 }
 
-// ---------- Courbe de tonalité monotone ----------
+// ---------- Courbe de tonalité monotone (Hermite) ----------
 function buildToneLUT(s,crushAmt,conAmt){
   const mid=0.42;
   const inA=[0,0.0625,0.25,0.5,0.75,1.0];
@@ -298,7 +302,7 @@ function applyTone(lutT,v){
   return lutT[i]*(1-f)+lutT[i+1]*f;
 }
 
-// ---------- Génération de la LUT 3D avec zones ----------
+// ---------- Zones ----------
 function getZoneVals(){
   return {
     sh:(+$('zSh').value)/100, shW:(+$('zShW').value)/100,
@@ -306,6 +310,8 @@ function getZoneVals(){
     hi:(+$('zHi').value)/100, hiW:(+$('zHiW').value)/100
   };
 }
+
+// ---------- Génération de la LUT 3D ----------
 function generateLUT(size){
   if(!refStats)return;
   const s=refStats;
@@ -329,109 +335,57 @@ function generateLUT(size){
     let R=applyTone(lutT,r0),G=applyTone(lutT,g0),B=applyTone(lutT,b0);
     const y=0.2126*R+0.7152*G+0.0722*B;
     R=y+(R-y)*satTarget;G=y+(G-y)*satTarget;B=y+(B-y)*satTarget;
-    // Pondération gaussienne des zones autour de y=0.25 / 0.5 / 0.75
+    // Pondération gaussienne des zones autour de y≈0.18 / 0.45 / 0.78
     const wSh=Math.exp(-Math.pow((y-0.18)/0.16,2));
     const wMd=Math.exp(-Math.pow((y-0.45)/0.18,2));
     const wHi=Math.exp(-Math.pow((y-0.78)/0.18,2));
     const wSum=wSh+wMd+wHi;
-    const expo=(z.sh*wSh+z.md*wMd+z.hi*wHi)/wSum;   // ±0.6 stop max
-    const wf=(z.shW*wSh+z.mdW*wMd+z.hiW*wHi)/wSum;  // ±0.12 log2 R/B
-    const gain=Math.pow(2,expo*0.6);
+    const expo=(z.sh*wSh+z.md*wMd+z.hi*wHi)/wSum;   // exposition relative par zone
+    const wf=(z.shW*wSh+z.mdW*wMd+z.hiW*wHi)/wSum;  // chaleur relative par zone
+    const gain=Math.pow(2,expo*0.6);                 // ±0.6 stop max
     R*=gain;G*=gain;B*=gain;
-    const kR=Math.pow(2,wf*0.12);
+    const kR=Math.pow(2,wf*0.12);                    // ±0.12 stop R/B max
     R*=kR;B/=kR;
-    r0=r0*(1-intA)+R*intA;g0=g0*(1-intA)+G*intA;b0=b0*(1-intA)+B*intA;
-    data[k++]=clamp(lin2srgb(clamp(r0,0,1)),0,1);
-    data[k++]=clamp(lin2srgb(clamp(g0,0,1)),0,1);
-    data[k++]=clamp(lin2srgb(clamp(b0,0,1)),0,1);
+    const oR=r0*(1-intA)+R*intA, oG=g0*(1-intA)+G*intA, oB=b0*(1-intA)+B*intA;
+    data[k++]=clamp(lin2srgb(clamp(oR,0,1)),0,1);
+    data[k++]=clamp(lin2srgb(clamp(oG,0,1)),0,1);
+    data[k++]=clamp(lin2srgb(clamp(oB,0,1)),0,1);
   }
   lut={size,data};
   $('btnDl').disabled=false;
   applyPreview();
 }
 
-// ---------- Prévisualisation : INTERPOLATION TÉTRAÉDRIQUE ----------
+// ---------- Interpolation tétraédrique (dispatch 6 tétraèdres) ----------
 function lutTetra(r,g,b){
   const S=lut.size,D=lut.data;
   const x=r*(S-1),y=g*(S-1),z=b*(S-1);
   const x0=Math.min(Math.floor(x),S-2),y0=Math.min(Math.floor(y),S-2),z0=Math.min(Math.floor(z),S-2);
   const fx=x-x0,fy=y-y0,fz=z-z0;
   const idx=(i,j,k)=>((k*S+j)*S+i)*3;
-  // Tétraèdres (standard) : ordre des coins selon fx>=fy>=fz etc.
-  const p000=idx(x0,y0,z0),p111=idx(x0+1,y0+1,z0+1);
-  // 8 coins
   const c=[[x0,y0,z0],[x0+1,y0,z0],[x0,y0+1,z0],[x0+1,y0+1,z0],
            [x0,y0,z0+1],[x0+1,y0,z0+1],[x0,y0+1,z0+1],[x0+1,y0+1,z0+1]];
   const v=c.map(q=>[D[idx(q[0],q[1],q[2])],D[idx(q[0],q[1],q[2])+1],D[idx(q[0],q[1],q[2])+2]]);
-  // Choix du tétraèdre (6 cas, dispatch standard)
-  let c1,c2,c3;
-  if(fx>fy){ if(fy>fz){c1=1;c2=3;c3=7;}        // fx>fy>fz
-             else if(fx>fz){c1=4;c2=5;c3=7;}   // fx>fz>fy
-             else{c1=4;c2=6;c3=7;} }            // fz>fx>fy
-  else{ if(fz>fy){c1=4;c2=6;c3=7;}              // fz>fy>fx
-        else if(fx>fz){c1=1;c2=2;c3=3;}         // fy>fx>fz
-        else{c1=2;c2=3;c3=7;} }                 // fy>fz>fx
-  const out=[0,1,2].map(ch=>
-    v[0][ch]*(1-fx-fy-fz)+ (fx>0? v[1][ch]*0:0) // placeholder, corrigé ci-dessous
-  );
-  // Implémentation explicite : somme pondérée
-  const w0=1-Math.max(fx,fy,fz); // pas exactement ; on utilise la décomposition simple :
-  // Formule tetraédrique générique via triangulation barycentrique :
-  const out2=[0,1,2].map(ch=>{
-    let val=0;
-    // interpolation trilinéaire serait (v0..v7) ; tétraédrique : sommet bas + 3 arêtes
-    val=v[0][ch];
-    const pv=[v[1][ch],v[2][ch],v[4][ch]]; // axes
-    // Décomposition: si fx>=fy>=fz on emprunte les coins 1,3,7 etc.
-    if(fx>fy){ if(fy>fz){ val+=fx*(v[1][ch]-v[0][ch])+fy*(v[3][ch]-v[1][ch])+fz*(v[7][ch]-v[3][ch]); }
-               else if(fx>fz){ val+=fx*(v[1][ch]-v[0][ch])+fz*(v[5][ch]-v[1][ch])+fy*(v[7][ch]-v[5][ch]); }
-               else{ val+=fz*(v[4][ch]-v[0][ch])+fx*(v[5][ch]-v[4][ch])+fy*(v[7][ch]-v[5][ch]); } }
-    else{ if(fz>fy){ val+=fz*(v[4][ch]-v[0][ch])+fy*(v[6][ch]-v[4][ch])+fx*(v[7][ch]-v[6][ch]); }
-          else if(fx>fz){ val+=fy*(v[2][ch]-v[0][ch])+fx*(v[3][ch]-v[2][ch])+fz*(v[7][ch]-v[3][ch]); }
-          else{ val+=fy*(v[2][ch]-v[0][ch])+fz*(v[6][ch]-v[2][ch])+fx*(v[7][ch]-v[6][ch]); } }
-    return val;
-  });
-  return out2;
-}
-
-function applyPreview(){
-  const img=$('imgPrev');
-  if(!img.src||!lut)return;
-  prevImg=img;
-  const cv=$('cvPrev');
-  const maxW=1280;
-  const sc=Math.min(1,maxW/img.naturalWidth);
-  cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
-  $('baEmpty').style.display='none';$('baPrev').style.display='block';
-  // synchronise l'image avant
-  const before=$('baBefore');
-  if(before.src!==img.src)before.src=img.src;
-  const ctx=cv.getContext('2d');ctx.drawImage(img,0,0,cv.width,cv.height);
-  const id=ctx.getImageData(0,0,cv.width,cv.height);const d=id.data;
-  // Échantillonner la rush pour le ΔE
-  const n=d.length/4;
-  const refS=refStats? sampleStatsFromRef():null;
-  let sumDE=0,deCount=0;
-  for(let i=0;i<d.length;i+=4){
-    const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
-    const [R,G,B]=lutTetra(r,g,b);
-    d[i]=R*255;d[i+1]=G*255;d[i+2]=B*255;
-    // ΔE sur sous-échantillon (1 px sur 16)
-    if(refS&&((i>>2)%16===0)){
-      const lr=srgb2lin(r),lg=srgb2lin(g),lb=srgb2lin(b);
-      const lR=srgb2lin(R),lG=srgb2lin(G),lB=srgb2lin(B);
-      const lab1=rgb2lab(lr,lg,lb),lab2=rgb2lab(lR,lG,lB);
-      sumDE+=deltaE2000(refS.lab[0],refS.lab[1],refS.lab[2],lab2[0],lab2[1],lab2[2]);
-      deCount++;
+  const out=[0,0,0];
+  for(let ch=0;ch<3;ch++){
+    let val;
+    if(fx>fy){
+      if(fy>fz)       val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fy*(v[3][ch]-v[1][ch])+fz*(v[7][ch]-v[3][ch]); // R>G>B
+      else if(fx>fz)  val=v[0][ch]+fx*(v[1][ch]-v[0][ch])+fz*(v[5][ch]-v[1][ch])+fy*(v[7][ch]-v[5][ch]); // R>B>G
+      else            val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fx*(v[5][ch]-v[4][ch])+fy*(v[7][ch]-v[5][ch]); // B>R>G
+    }else{
+      if(fz>fy)       val=v[0][ch]+fz*(v[4][ch]-v[0][ch])+fy*(v[6][ch]-v[4][ch])+fx*(v[7][ch]-v[6][ch]); // B>G>R
+      else if(fx>fz)  val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fx*(v[3][ch]-v[2][ch])+fz*(v[7][ch]-v[3][ch]); // G>R>B
+      else            val=v[0][ch]+fy*(v[2][ch]-v[0][ch])+fz*(v[6][ch]-v[2][ch])+fx*(v[7][ch]-v[6][ch]); // G>B>R
     }
+    out[ch]=clamp(val,0,1);
   }
-  ctx.putImageData(id,0,0);
-  if(refS&&deCount)showDE(sumDE/deCount);
+  return out;
 }
 
-// Stats Lab moyennes de la référence (cache)
+// ---------- Prévisualisation + ΔE ----------
 let refLabCache=null;
-function sampleStatsFromRef(){
+function refMeanLab(){
   if(!refLabCache){
     const img=$('imgRef');
     const {data,n}=sampleImg(img);
@@ -442,9 +396,8 @@ function sampleStatsFromRef(){
     }
     refLabCache=[L/n,A/n,B/n];
   }
-  return {lab:refLabCache};
+  return refLabCache;
 }
-
 function showDE(de){
   $('deBox').style.display='flex';
   $('deNum').textContent=de.toFixed(1);
@@ -455,10 +408,39 @@ function showDE(de){
   $('deNum').className='descore__num '+cls;
   $('deTxt').innerHTML='<b>Score de match ΔE (CIEDE2000)</b><br>'+verdict+'<br><span style="font-size:.7rem">Moyenne sur ~4 000 pixels : rush gradé vs Lab moyen de la référence.</span>';
 }
+function applyPreview(){
+  const img=$('imgPrev');
+  if(!img.src||!lut)return;
+  prevImg=img;
+  const cv=$('cvPrev');
+  const maxW=1280;
+  const sc=Math.min(1,maxW/img.naturalWidth);
+  cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
+  $('baEmpty').style.display='none';$('baPrev').style.display='block';
+  const before=$('baBefore');
+  if(before.src!==img.src)before.src=img.src;
+  const ctx=cv.getContext('2d');ctx.drawImage(img,0,0,cv.width,cv.height);
+  const id=ctx.getImageData(0,0,cv.width,cv.height);const d=id.data;
+  const refL=refStats?refMeanLab():null;
+  let sumDE=0,deCount=0;
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
+    const [R,G,B]=lutTetra(r,g,b);
+    d[i]=R*255;d[i+1]=G*255;d[i+2]=B*255;
+    if(refL&&((i>>2)%16===0)){
+      const lab1=rgb2lab(srgb2lin(r),srgb2lin(g),srgb2lin(b));
+      const lab2=rgb2lab(srgb2lin(R),srgb2lin(G),srgb2lin(B));
+      sumDE+=deltaE2000(lab1[0],lab1[1],lab1[2],lab2[0],lab2[1],lab2[2]);
+      deCount++;
+    }
+  }
+  ctx.putImageData(id,0,0);
+  if(refL&&deCount)showDE(sumDE/deCount);
+}
 
 // Slider avant/après
 (function(){
-  const ba=$('baPrev'),handle=$('baHandle');
+  const ba=$('baPrev');
   let dragging=false;
   const set=x=>{const r=ba.getBoundingClientRect();const pct=clamp((x-r.left)/r.width*100,0,100);ba.style.setProperty('--split',pct+'%');};
   const start=e=>{dragging=true;set((e.touches?e.touches[0]:e).clientX);};
@@ -469,11 +451,11 @@ function showDE(de){
   window.addEventListener('mouseup',end);window.addEventListener('touchend',end);
 })();
 
-// ---------- Export .cube (spec Autodesk) ----------
+// ---------- Export .cube ----------
 function download(){
   if(!lut)return;
   const S=lut.size;
-  let out='# Created with Colour Grade Tool v3.1\n# look derived from reference shot (linear-light percentile match, tetrahedral preview)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
+  let out='# Created with Colour Grade Tool v3.1\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
   const D=lut.data;
   for(let i=0;i<D.length;i+=3){
     out+=D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6)+'\n';
@@ -513,7 +495,6 @@ function deletePreset(){
   localStorage.setItem(PKEY,JSON.stringify(ps));refreshPresetList();
 }
 
-// ---------- Labels ----------
 function syncLabels(){
   $('vInt').textContent=$('intensity').value+'%';
   $('vSat').textContent=$('sat').value==100?'auto':$('sat').value+'%';
