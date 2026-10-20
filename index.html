@@ -393,7 +393,7 @@ function lutTetra(r,g,b){
   let out=[0,0,0];
   // Dispatch standard (ordre décroissant des deltas) — 6 tétraèdres
   let a=fx,b2=fy,c=fz;
-  const acc=(w,iA,iB,iC)=>{out[0]+=w*D[iA];out[1]+=w*D[iB];out[2]+=w*D[iC];};
+  const acc=(w,v0,v1,v2)=>{out[0]+=w*v0;out[1]+=w*v1;out[2]+=w*v2;};
   if(fx>fy){
     if(fy>fz){        // fx>fy>fz : R>G>B
       acc(fx,D[c100],D[c100+1],D[c100+2]);
@@ -575,7 +575,7 @@ setupDrop('dropPrev',img=>{
 $('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});
 $('btnDl').addEventListener('click',download);
 $('btnAuto').addEventListener('click',()=>{
-  if(window.CGT_AUTOMATCH && typeof window.CGT_AUTOMATCH.run==='function')window.CGT_AUTOMATCH.run();
+  if(window.CGT_AUTOMATCH && typeof window.CGT_AUTOMATCH.run==='function')window.CGT_AUTOMATCH.run({deep:true});
   else if(typeof window.CGT_AUTOMATCH==='function')window.CGT_AUTOMATCH();
   else console.warn('colormatch.js non chargé');
 });
