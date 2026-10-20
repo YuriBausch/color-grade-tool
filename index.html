@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Color Grade Tool — Ref Shot → LUT .cube</title>
+<style>
+  :root { --bg:#141414; --panel:#1f1f1f; --accent:#e8a33d; --txt:#e6e6e6; --muted:#999; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; padding:24px; }
+  header { text-align:center; margin-bottom:24px; }
+  h1 { color:var(--accent); font-size:1.6rem; letter-spacing:1px; }
+  header p { color:var(--muted); font-size:.9rem; margin-top:4px; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:1200px; margin:0 auto; }
+  @media(max-width:800px){ main{grid-template-columns:1fr;} }
+  .panel { background:var(--panel); border-radius:10px; padding:18px; }
+  .panel h2 { font-size:1rem; color:var(--accent); margin-bottom:12px; text-transform:uppercase; letter-spacing:.5px; }
+  .dropzone { border:2px dashed #444; border-radius:8px; padding:30px; text-align:center; color:var(--muted); cursor:pointer; transition:border-color .2s; }
+  .dropzone:hover, .dropzone.drag { border-color:var(--accent); }
+  canvas, img.ref { max-width:100%; border-radius:6px; display:block; margin:12px auto; }
+  .ctrl { margin:10px 0; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:.85rem; margin-bottom:4px; color:var(--muted); }
+  .ctrl label span { color:var(--accent); }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  button { background:var(--accent); color:#141414; border:none; padding:10px 18px; border-radius:6px; font-weight:600; cursor:pointer; font-size:.9rem; }
+  button:hover { filter:brightness(1.1); }
+  button.ghost { background:#333; color:var(--txt); }
+  .palette { display:flex; gap:6px; flex-wrap:wrap; margin:12px 0; }
+  .swatch { width:42px; height:42px; border-radius:6px; border:1px solid #333; }
+  #log { font-family:monospace; font-size:.75rem; color:var(--muted); margin-top:10px; white-space:pre-wrap; max-height:120px; overflow:auto; }
+  .previewbox { position:relative; }
+  .previewbox img { filter:var(--grade, none); }
+  footer { text-align:center; color:var(--muted); font-size:.75rem; margin-top:24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 Color Grade Tool</h1>
+  <p>Analyse ton ref shot → génère une LUT .cube pour DaVinci Resolve — 100% local, aucun upload</p>
+</header>
+<main>
+  <section class="panel">
+    <h2>1. Ref shot</h2>
+    <div class="dropzone" id="drop">Clique ou glisse-dépose une image de référence<br><small>(JPG / PNG)</small></div>
+    <input type="file" id="file" accept="image/*" hidden>
+    <img class="ref" id="refimg" hidden>
+    <h2 style="margin-top:16px">Palette extraite</h2>
+    <div class="palette" id="palette"><small style="color:var(--muted)">Charge une image…</small></div>
+    <h2 style="margin-top:8px">Analyse</h2>
+    <div id="analysis" style="font-size:.85rem;color:var(--muted)">—</div>
+  </section>
+
+  <section class="panel">
+    <h2>2. Look</h2>
+    <div class="ctrl"><label>Saturation <span id="v_sat">0.40</span></label><input type="range" id="sat" min="0" max="1" step="0.01" value="0.40"></div>
+    <div class="ctrl"><label>Chaleur (warm/cool) <span id="v_warm">0.15</span></label><input type="range" id="warm" min="-0.5" max="0.5" step="0.01" value="0.15"></div>
+    <div class="ctrl"><label>Crush des noirs <span id="v_crush">0.20</span></label><input type="range" id="crush" min="0" max="0.4" step="0.01" value="0.20"></div>
+    <div class="ctrl"><label>Contraste (pivot bas) <span id="v_contrast">0.30</span></label><input type="range" id="contrast" min="0" max="1" step="0.01" value="0.30"></div>
+    <div class="ctrl"><label>Soft clip hautes lumières <span id="v_soft">0.85</span></label><input type="range" id="soft" min="0.6" max="1" step="0.01" value="0.85"></div>
+    <div class="ctrl"><label>Intensité du look <span id="v_mix">1.00</span></label><input type="range" id="mix" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="match">🎯 Auto-match la référence</button>
+      <button class="ghost" id="reset">Réinitialiser</button>
+    </div>
+    <h2 style="margin-top:18px">3. Aperçu</h2>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px">Charge ta frame d'origine (rush) pour prévisualiser le look :</p>
+    <div class="dropzone" id="drop2">Charger une frame de tes rushes (optionnel)</div>
+    <input type="file" id="file2" accept="image/*" hidden>
+    <div class="previewbox"><img id="previmg" hidden></div>
+    <h2 style="margin-top:18px">4. Export</h2>
+    <div class="row">
+      <button id="dl">⬇️ Télécharger LUT .cube (33³)</button>
+    </div>
+    <div id="log"></div>
+  </section>
+</main>
+<footer>Color Grade Tool — les LUTs 3D gèrent le look global (contraste, saturation, dominante). Fenêtres / qualifiers / grain se règlent dans Resolve.</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+let refData = null; // analyse de la référence
+
+// ---------- Chargement images ----------
+function setupDrop(zoneId, inputId, cb){
+  const z=$(zoneId), inp=$(inputId);
+  z.onclick=()=>inp.click();
+  inp.onchange=e=>{ if(e.target.files[0]) cb(e.target.files[0]); };
+  z.ondragover=e=>{e.preventDefault();z.classList.add('drag');};
+  z.ondragleave=()=>z.classList.remove('drag');
+  z.ondrop=e=>{e.preventDefault();z.classList.remove('drag');if(e.dataTransfer.files[0])cb(e.dataTransfer.files[0]);};
+}
+setupDrop('drop','file',f=>loadRef(f));
+setupDrop('drop2','file2',f=>loadPreview(f));
+
+function loadRef(file){
+  const img=new Image();
+  img.onload=()=>{
+    $('refimg').src=img.src; $('refimg').hidden=false;
+    refData=analyze(img);
+    showAnalysis(refData);
+    autoMatch(refData);
+  };
+  img.src=URL.createObjectURL(file);
+}
+
+function loadPreview(file){
+  const img=new Image();
+  img.onload=()=>{ $('previmg').src=img.src; $('previmg').hidden=false; applyPreview(); };
+  img.src=URL.createObjectURL(file);
+}
+
+// ---------- Analyse ----------
+function analyze(img){
+  const c=document.createElement('canvas');
+  const s=Math.min(1, 200/Math.max(img.width,img.height));
+  c.width=img.width*s; c.height=img.height*s;
+  const x=c.getContext('2d'); x.drawImage(img,0,0,c.width,c.height);
+  const d=x.getImageData(0,0,c.width,c.height).data;
+  let sr=0,sg=0,sb=0,n=0, lums=[];
+  const hist=new Array(256).fill(0);
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i],g=d[i+1],b=d[i+2];
+    sr+=r;sg+=g;sb+=b;n++;
+    const l=(0.2126*r+0.7152*g+0.0722*b)/255;
+    lums.push(l); hist[Math.round(l*255)]++;
+  }
+  const mr=sr/n,mg=sg/n,sb_=sb/n;
+  // percentile ombres / hautes lumières
+  const sorted=[...lums].sort((a,b)=>a-b);
+  const pct=p=>sorted[Math.floor(p*(sorted.length-1))];
+  const shadowPct=pct(0.05), hlPct=pct(0.95);
+  const meanLum=pct(0.5);
+  // saturation moyenne
+  let sat=0;
+  for(let i=0;i<d.length;i+=4){
+    const mx=Math.max(d[i],d[i+1],d[i+2]),mn=Math.min(d[i],d[i+1],d[i+2]);
+    if(mx>0)sat+=(mx-mn)/mx;
+  }
+  sat/=(d.length/4);
+  // palette dominante (quantification grossière)
+  const buckets={};
+  for(let i=0;i<d.length;i+=4){
+    const k=(d[i]>>5)+','+(d[i+1]>>5)+','+(d[i+2]>>5);
+    buckets[k]=(buckets[k]||0)+1;
+  }
+  const top=Object.entries(buckets).sort((a,b)=>b[1]-a[1]).slice(0,8)
+    .map(([k])=>k.split(',').map(v=>Math.min(255,(parseInt(v)<<5)+16)));
+  return {mr,mg,mb:sb_,shadowPct,hlPct,meanLum,sat,top};
+}
+
+function showAnalysis(a){
+  $('palette').innerHTML=a.top.map(c=>`<div class="swatch" style="background:rgb(${c[0]},${c[1]},${c[2]})" title="rgb(${c})"></div>`).join('');
+  const warm=a.mr>a.mb?'chaude':'froide';
+  $('analysis').textContent=
+    `Luminance médiane : ${(a.meanLum*100).toFixed(0)}% · Ombres (p5) : ${(a.shadowPct*100).toFixed(0)}% · HL (p95) : ${(a.hlPct*100).toFixed(0)}%\n`+
+    `Saturation moyenne : ${(a.sat*100).toFixed(0)}% · Dominante : ${warm} (R ${a.mr.toFixed(0)} / G ${a.mg.toFixed(0)} / B ${a.mb.toFixed(0)})`;
+}
+
+// ---------- Auto-match ----------
+function autoMatch(a){
+  // dérive de la ref vers des réglages
+  const warmth=clamp(((a.mr-a.mb)/255)*2.2,-0.5,0.5);
+  const crush=Math.max(0,Math.min(0.4,a.shadowPct*0.9));
+  const contrast=clamp((0.5-a.meanLum)*1.2+0.15,0,1);
+  const sat=clamp(a.sat*1.1,0,1);
+  const soft=clamp(a.hlPct*1.05+0.05,0.6,1);
+  set('sat',sat);set('warm',warmth);set('crush',crush);set('contrast',contrast);set('soft',soft);
+  log('Auto-match appliqué depuis la référence.');
+  applyPreview();
+}
+
+function set(id,v){ $(id).value=v; $('v_'+id).textContent=(+v).toFixed(2); }
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+['sat','warm','crush','contrast','soft','mix'].forEach(id=>{
+  $(id).oninput=e=>{ $('v_'+id).textContent=(+e.target.value).toFixed(2); applyPreview(); };
+});
+
+$('reset').onclick=()=>{ set('sat',0.4);set('warm',0.15);set('crush',0.2);set('contrast',0.3);set('soft',0.85);set('mix',1); applyPreview(); log('Réglages réinitialisés.'); };
+$('match').onclick=()=>{ if(refData) autoMatch(refData); else log('Charge d\'abord une référence.'); };
+
+function applyPreview(){
+  const p=$('previmg'); if(!p.src)return;
+  const s=+$('sat').value,w=+$('warm').value,c=+$('crush').value,k=+$('contrast').value,so=+$('soft').value;
+  // CSS filter approximation pour l'aperçu
+  const cssSat=`saturate(${(s*2.2).toFixed(2)})`;
+  const cssContrast=`contrast(${(1+k*0.8).toFixed(2)})`;
+  const cssBright=`brightness(${(1-c*0.3).toFixed(2)})`;
+  const sepia=w>0?`sepia(${(w).toFixed(2)})`:(w<0?`hue-rotate(${(-w*20).toFixed(0)}deg) saturate(${(s*2.2).toFixed(2)})`:'');
+  p.style.filter=`${cssSat} ${cssContrast} ${cssBright} ${sepia}`;
+}
+
+// ---------- Génération LUT .cube ----------
+function grade(r,g,b){
+  let R=r,G=g,B=b;
+  // crush noirs
+  R=Math.max(0,R-$('crush').value*255*Math.max(0,(1-R/255))*0.5);
+  G=Math.max(0,G-$('crush').value*255*Math.max(0,(1-G/255))*0.5);
+  B=Math.max(0,B-$('crush').value*255*Math.max(0,(1-B/255))*0.5);
+  // contraste pivot bas
+  const k=1+$('contrast').value*0.9, pivot=0.35*255;
+  R=clamp(pivot+(R-pivot)*k,0,255); G=clamp(pivot+(G-pivot)*k,0,255); B=clamp(pivot+(B-pivot)*k,0,255);
+  // warm/cool
+  const w=+$('warm').value*255*0.25;
+  R=clamp(R+w,0,255); B=clamp(B-w,0,255);
+  // soft clip HL
+  const lim=+$('soft').value*255;
+  const softclip=v=>v>lim?lim+(v-lim)*0.35:v;
+  R=softclip(R);G=softclip(G);B=softclip(B);
+  // saturation
+  const s=+$('sat').value, l=0.2126*R+0.7152*G+0.0722*B;
+  R=clamp(l+(R-l)*s,0,255); G=clamp(l+(G-l)*s,0,255); B=clamp(l+(B-l)*s,0,255);
+  return [R/255,G/255,B/255];
+}
+
+$('dl').onclick=()=>{
+  const N=33, mix=+$('mix').value, lines=[
+    'TITLE "Color Grade Tool look"',
+    'LUT_3D_SIZE '+N,
+    'DOMAIN_MIN 0 0 0','DOMAIN_MAX 1 1 1',''
+  ];
+  for(let b=0;b<N;b++)for(let g=0;g<N;g++)for(let r=0;r<N;r++){
+    const i0=[r/(N-1),g/(N-1),b/(N-1)];
+    const out=grade(i0[0]*255,i0[1]*255,i0[2]*255);
+    const mixed=i0.map((v,i)=>v+(out[i]-v)*mix);
+    lines.push(mixed.map(v=>v.toFixed(6)).join(' '));
+  }
+  const blob=new Blob([lines.join('\n')],{type:'text/plain'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='color_grade_tool.cube'; a.click();
+  log('LUT .cube générée ('+(N*N*N)+' points). Importe-la dans Resolve : Gallerie → Right-click → Generate/Import LUT, ou node → LUT 3D.');
+};
+
+function log(m){ $('log').textContent+='› '+m+'\n'; }
+log('Prêt. Charge une frame de référence pour commencer.');
+</script>
+</body>
+</html>
