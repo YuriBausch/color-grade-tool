@@ -26,6 +26,14 @@
   .drop__ico{font-size:1.8rem;}
   .drop img,.drop canvas{max-width:100%;max-height:420px;display:block;}
   .drop .imgwrap{width:100%;display:flex;justify-content:center;}
+  .roi-stage{position:relative;display:inline-block;max-width:100%;line-height:0;}
+  .roi-stage img{max-width:100%;max-height:420px;}
+  .roi-overlay{position:absolute;inset:0;z-index:6;pointer-events:none;display:none;background:linear-gradient(90deg,rgba(0,0,0,.42) 0 var(--rx,0%),transparent var(--rx,0%) var(--rx2,100%),rgba(0,0,0,.42) var(--rx2,100%) 100%),linear-gradient(0deg,rgba(0,0,0,.42) 0 var(--ry,0%),transparent var(--ry,0%) var(--ry2,100%),rgba(0,0,0,.42) var(--ry2,100%) 100%);}
+  .roi-overlay::after{content:'';position:absolute;left:var(--rx,0%);top:var(--ry,0%);width:calc(var(--rx2,100%) - var(--rx,0%));height:calc(var(--ry2,100%) - var(--ry,0%));border:2px solid var(--acc);box-shadow:0 0 0 1px rgba(0,0,0,.55),0 0 18px rgba(232,163,61,.35);}
+  .roi-mode .roi-stage{cursor:crosshair;} .roi-mode .roi-overlay{pointer-events:auto;}
+  .roi-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 18px;}
+  .roi-toolbar .muted{flex:1;min-width:180px;}
+
   .thumbtag{position:absolute;top:10px;left:10px;font-size:.65rem;background:rgba(0,0,0,.75);padding:3px 10px;border-radius:6px;letter-spacing:1.5px;text-transform:uppercase;z-index:5;border:1px solid var(--line);}
   .ba{position:relative;width:100%;user-select:none;overflow:hidden;}
   .ba img,.ba canvas{width:100%;display:block;}
@@ -107,7 +115,7 @@
         <span class="drop__ico">🎞️</span>
         Glisse ici la frame de référence<br>(ou clique pour parcourir)
       </div>
-      <div class="imgwrap"><img id="imgRef" style="display:none" alt="Frame de référence"></div>
+      <div class="imgwrap"><div class="roi-stage" id="roiStageRef"><img id="imgRef" style="display:none" alt="Frame de référence"><div class="roi-overlay" id="roiOverlayRef" aria-label="Zone de référence"></div></div></div>
       <div style="width:100%;padding:0 16px 16px">
         <div class="palette-title" id="paletteTitle" style="display:none">Palette dominante de la référence</div>
         <div class="palette" id="palette" style="display:none"></div>
@@ -118,7 +126,7 @@
     <div class="card__head"><span class="card__title">② Prévisualisation — avant / après</span><span class="card__hint">glisse la poignée ⇔</span></div>
     <div class="drop" id="dropPrev">
       <span class="thumbtag" style="display:none" id="tagPrev">Rush chargé</span>
-      <div class="ba" id="baPrev" style="display:none">
+      <div class="ba" id="baPrev" style="display:none"><div class="roi-overlay" id="roiOverlayPrev" aria-label="Zone de match"></div>
         <img id="baBefore" alt="Avant">
         <canvas id="cvPrev"></canvas>
         <span class="ba__label ba__label--before">Avant</span>
@@ -139,6 +147,12 @@
   <label class="file-pick" for="rushFiles">＋ Ajouter des rushs</label>
   <input id="rushFiles" type="file" accept="image/*" multiple hidden>
   <span id="rushCount" class="muted">Aucun rush additionnel</span>
+</div>
+
+<div class="roi-toolbar" id="roiToolbar">
+  <button id="btnRoi" class="sec" type="button">🎯 Zone de match</button>
+  <button id="btnRoiReset" class="sec" type="button">Zone = image entière</button>
+  <span id="roiStatus" class="muted">Mode inactif · ROI image entière</span>
 </div>
 
 <div class="descore" id="deBox">
@@ -229,7 +243,7 @@
 
 <script>
 const $=id=>document.getElementById(id);
-let refStats=null,lut=null,prevImg=null,rushImgs=[];
+let refStats=null,lut=null,prevImg=null,rushImgs=[],refImg=null;
 
 // ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
 function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
@@ -311,11 +325,13 @@ function setupDrop(dropId,cb){
 }
 
 // ---------- Échantillonnage à surface constante (~65k px) ----------
-function sampleImg(img){
-  const area=65000, aspect=img.width/img.height;
+function sampleImg(img,roi){
+  const area=65000, x=roi?clamp(roi.x,0,.99):0, y=roi?clamp(roi.y,0,.99):0;
+  const rw=roi?clamp(roi.w,.01,1-x):1-x, rh=roi?clamp(roi.h,.01,1-y):1-y;
+  const aspect=(img.width*rw)/(img.height*rh);
   const W=Math.max(1,Math.round(Math.sqrt(area*aspect))),H=Math.max(1,Math.round(area/W));
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
-  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,W,H);
+  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,x*img.width,y*img.height,rw*img.width,rh*img.height,0,0,W,H);
   return {data:ctx.getImageData(0,0,W,H).data,n:W*H};
 }
 
@@ -329,8 +345,8 @@ function zoneWarmth(sr,sb,count,globalB){
 }
 
 // ---------- Analyse de la référence ----------
-function analyze(img){
-  const {data:d,n}=sampleImg(img);
+function analyze(img,roi){
+  const {data:d,n}=sampleImg(img,roi);
   const lum=new Float32Array(n),rC=new Float32Array(n),gC=new Float32Array(n),bC=new Float32Array(n);
   let satSum=0;
   for(let i=0;i<n;i++){
@@ -358,9 +374,9 @@ function analyze(img){
 }
 
 // ---------- Palette dominante (k-means, 6 couleurs) ----------
-function buildPalette(img,k){
+function buildPalette(img,k,roi){
   k=k||6;
-  const {data:d,n}=sampleImg(img);
+  const {data:d,n}=sampleImg(img,roi);
   const pts=[];
   for(let i=0;i<n;i+=7)pts.push([d[i*4],d[i*4+1],d[i*4+2]]);
   let cent=[];
@@ -387,8 +403,8 @@ function buildPalette(img,k){
     pct:counts[i]/pts.length*100
   })).sort((a,b)=>b.pct-a.pct);
 }
-function showPalette(img){
-  const pal=buildPalette(img,6);
+function showPalette(img,roi){
+  const pal=buildPalette(img,6,roi);
   const el=$('palette');
   el.innerHTML=pal.map(s=>`<div class="swatch" style="background:${s.hex}" title="${s.hex} — ${s.pct.toFixed(1)}%"><em>${s.pct.toFixed(0)}%</em><span>${s.hex}</span></div>`).join('');
   el.style.display='flex';$('paletteTitle').style.display='block';
@@ -503,6 +519,19 @@ function lutTetra(r,g,b){
   return [clamp(out[0],0,1),clamp(out[1],0,1),clamp(out[2],0,1)];
 }
 
+// ---------- ROI dessinable, persistante et partagée par l’analyse ----------
+const ROI_KEY='cgt_match_roi_v1';
+let roiState={ref:null,prev:null},roiMode=false,roiDrag=null;
+function loadROI(){try{const v=JSON.parse(localStorage.getItem(ROI_KEY));if(v&&typeof v==='object')roiState={ref:v.ref||null,prev:v.prev||null};}catch(e){}}
+function saveROI(){try{localStorage.setItem(ROI_KEY,JSON.stringify(roiState));}catch(e){}}
+function roiLabel(){const r=roiState.prev||roiState.ref; $('roiStatus').textContent=roiMode?'Dessinez une zone sur l’image active · double-clic pour supprimer':(r?'ROI active · '+Math.round(r.w*100)+'×'+Math.round(r.h*100)+'%':'Mode inactif · ROI image entière');}
+function drawROI(which){const r=roiState[which],el=$('roiOverlay'+(which==='ref'?'Ref':'Prev'));if(!el)return;el.style.display=r?'block':'none';if(r){el.style.setProperty('--rx',(r.x*100)+'%');el.style.setProperty('--ry',(r.y*100)+'%');el.style.setProperty('--rx2',((r.x+r.w)*100)+'%');el.style.setProperty('--ry2',((r.y+r.h)*100)+'%');}}
+function refreshAnalysis(){if(!refImg)return;refStats=analyze(refImg,roiState.ref);showStats(refStats);showPalette(refImg,roiState.ref);if(refStats)generateLUT(+$('lutSize').value);}
+function setROI(which,r){roiState[which]=r;drawROI(which);saveROI();roiLabel();if(which==='ref'&&refImg)refreshAnalysis();if(which==='prev'&&prevImg&&lut)renderPrev(prevImg);}
+function bindROI(which,stageId){const stage=$(stageId);stage.addEventListener('pointerdown',e=>{if(!roiMode)return;e.preventDefault();const b=stage.getBoundingClientRect();roiDrag={which,x0:clamp((e.clientX-b.left)/b.width,0,1),y0:clamp((e.clientY-b.top)/b.height,0,1)};stage.setPointerCapture(e.pointerId);});stage.addEventListener('pointermove',e=>{if(!roiDrag||roiDrag.which!==which)return;const b=stage.getBoundingClientRect(),x=clamp((e.clientX-b.left)/b.width,0,1),y=clamp((e.clientY-b.top)/b.height,0,1);const x0=Math.min(roiDrag.x0,x),y0=Math.min(roiDrag.y0,y),w=Math.max(.01,Math.abs(x-roiDrag.x0)),h=Math.max(.01,Math.abs(y-roiDrag.y0));setROI(which,{x:x0,y:y0,w:Math.min(w,1-x0),h:Math.min(h,1-y0)});});stage.addEventListener('pointerup',()=>{roiDrag=null;});stage.addEventListener('click',e=>{if(roiMode)e.stopPropagation();});stage.addEventListener('dblclick',e=>{if(roiMode){e.preventDefault();setROI(which,null);}});}
+function toggleROIMode(){roiMode=!roiMode;document.body.classList.toggle('roi-mode',roiMode);$('btnRoi').classList.toggle('active',roiMode);roiLabel();}
+
+
 // ---------- Lab moyen de la référence (pour ΔE) ----------
 function refMeanLab(){
   if(!refStats)return null;
@@ -600,11 +629,15 @@ function renderPrev(img){
   ctx.drawImage(img,0,0,cv.width,cv.height);
   const id=ctx.getImageData(0,0,cv.width,cv.height);const d=id.data;
   let sumDE=0,deCount=0;
+  const activeRoi=roiState.prev;
+  const rw=activeRoi||{x:0,y:0,w:1,h:1};
+  const roiX0=Math.floor(rw.x*cv.width),roiY0=Math.floor(rw.y*cv.height),roiX1=Math.ceil((rw.x+rw.w)*cv.width),roiY1=Math.ceil((rw.y+rw.h)*cv.height);
   for(let i=0;i<d.length;i+=4){
     const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
     const R0=lutTetra(r,g,b);
     d[i]=R0[0]*255;d[i+1]=R0[1]*255;d[i+2]=R0[2]*255;
-    if((i>>2)%16===0){
+    const pix=i>>2,px=pix%cv.width,py=Math.floor(pix/cv.width);
+    if(px>=roiX0&&px<roiX1&&py>=roiY0&&py<roiY1&&(i>>2)%16===0){
       const lab1=rgb2lab(srgb2lin(r),srgb2lin(g),srgb2lin(b));
       const lab2=rgb2lab(srgb2lin(R0[0]),srgb2lin(R0[1]),srgb2lin(R0[2]));
       sumDE+=deltaE2000(lab1[0],lab1[1],lab1[2],lab2[0],lab2[1],lab2[2]);
@@ -759,9 +792,10 @@ $('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.targ
 
 // ---------- Wiring ----------
 setupDrop('dropRef',img=>{
-  refStats=analyze(img);
+  refImg=img;
+  refStats=analyze(img,roiState.ref);
   showStats(refStats);
-  showPalette(img);
+  showPalette(img,roiState.ref);
   const ir=$('imgRef');
   ir.src=img.src;ir.style.display='block';
   $('ringRef').style.display='none';
@@ -770,6 +804,7 @@ setupDrop('dropRef',img=>{
 });
 setupDrop('dropPrev',img=>{
   prevImg=img;
+  drawROI('prev');
   if(!lut){
     $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
     $('baBefore').src=img.src;
@@ -836,9 +871,10 @@ $('btnDel').addEventListener('click',deletePreset);
 $('btnExportPreset').addEventListener('click',exportPreset);
 $('btnImportPreset').addEventListener('click',()=>$('presetFile').click());
 $('presetFile').addEventListener('change',e=>{importPresetFile(e.target.files[0]);e.target.value='';});
-syncLabels();refreshPresetList();
+loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');drawROI('prev');$('btnRoi').addEventListener('click',toggleROIMode);$('btnRoiReset').addEventListener('click',()=>{roiState={ref:null,prev:null};saveROI();drawROI('ref');drawROI('prev');roiLabel();if(refImg)refreshAnalysis();if(prevImg&&lut)renderPrev(prevImg);});roiLabel();syncLabels();refreshPresetList();
 </script>
 <script src="colormatch.js"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
