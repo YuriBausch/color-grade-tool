@@ -439,15 +439,19 @@ function getZoneVals(){
 
 // ---------- Génération de la LUT 3D ----------
 function generateLUT(size){
+  // Always snapshot the current reference and controls at generation time.  The
+  // preview must never retain a LUT from a previous reference/auto-match.
+  const reference=refStats;
+  if(!reference)return;
   const n=Math.max(2,Math.round(size||17)), data=new Float32Array(n*n*n*3),
-    p={sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,
+    p={intensity:+$('intensity').value,sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,
        zSh:+$('zSh').value,zShW:+$('zShW').value,zMd:+$('zMd').value,
        zMdW:+$('zMdW').value,zHi:+$('zHi').value,zHiW:+$('zHiW').value};
   function correct(r,g,b){
     // The reference analysis is the source of the automatic look. Previously this
     // function only read UI controls, so changing the reference could not change
     // the generated LUT. Keep manual controls additive so presets still work.
-    const rs=refStats||{meanR:.18,meanG:.18,meanB:.18,p50:.18,p5:.02,p95:.75,sat:.5};
+    const rs=reference;
     const refWarm=clamp((rs.meanR-rs.meanB)*1.5,-.25,.25);
     const refContrast=clamp((rs.p95-rs.p5)/.73,.65,1.35);
     const refSat=clamp(rs.sat/.5,.65,1.35);
@@ -459,7 +463,9 @@ function generateLUT(size){
     const y=.2126*R+.7152*G+.0722*B;
     R=y+(R-y)*sat; G=y+(G-y)*sat; B=y+(B-y)*sat;
     const ww=1+warm*.5+zw*.08;
-    return [clamp(R*ww,0,1),clamp(G,0,1),clamp(B/ww,0,1)];
+    const graded=[clamp(R*ww,0,1),clamp(G,0,1),clamp(B/ww,0,1)];
+    const mix=clamp(p.intensity/100,0,1);
+    return [r+(graded[0]-r)*mix,g+(graded[1]-g)*mix,b+(graded[2]-b)*mix];
   }
   let k=0;
   for(let bi=0;bi<n;bi++)for(let gi=0;gi<n;gi++)for(let ri=0;ri<n;ri++){
@@ -831,11 +837,8 @@ function exportMatchReport(){
 
 $('btnDl').addEventListener('click',download);
 $('btnReport').addEventListener('click',exportMatchReport);
-$('btnAuto').addEventListener('click',()=>{
-  // Guided Match auto is local and deterministic: derive a starting point from
-  // the loaded reference, then regenerate the LUT. The old CGT_AUTOMATCH hook
-  // was never defined in this document, making the button a no-op.
-  if(!refStats){alert('Charge une référence avant le match auto.');return;}
+function runAutoMatch(){
+  if(!refStats){alert('Charge une référence avant le match auto.');return false;}
   const range=Math.max(0.001,refStats.p95-refStats.p5);
   $('warm').value=Math.round(clamp((refStats.meanR-refStats.meanB)*150,-100,100));
   $('con').value=Math.round(clamp(100*range/.73,50,150));
@@ -843,7 +846,9 @@ $('btnAuto').addEventListener('click',()=>{
   $('crush').value=Math.round(clamp(50*(1-refStats.p1/.08),0,100));
   syncLabels();
   generateLUT(+$('lutSize').value);
-});
+  return true;
+}
+$('btnAuto').addEventListener('click',runAutoMatch);
 $('btnReset').addEventListener('click',()=>{
   $('intensity').value=100;$('sat').value=100;$('warm').value=0;$('crush').value=50;$('con').value=100;
   ['zSh','zShW','zMd','zMdW','zHi','zHiW'].forEach(id=>$(id).value=0);
@@ -864,7 +869,7 @@ loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');d
   const set=(id,v)=>{const el=document.getElementById(id);if(el){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));}};
   document.querySelectorAll('[data-simple-action]').forEach(btn=>btn.addEventListener('click',function(){
     const a=this.dataset.simpleAction;
-    if(a==='auto'){fire('btnAuto');return;}
+    if(a==='auto'){runAutoMatch();return;}
     if(a==='reset'){fire('btnReset');return;}
     if(a==='warm'){set('sat',108);set('warm',28);set('con',104);return;}
     if(a==='cool'){set('sat',104);set('warm',-28);set('con',102);return;}
