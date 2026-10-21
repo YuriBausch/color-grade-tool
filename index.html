@@ -1,56 +1,305 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Color Grade Tool</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Colour Grade Tool v3.2 — Ref shot vers LUT .cube pour DaVinci Resolve. Tétraédrique, score ΔE, presets, vectorscope + waveform. 100% local.">
+<title>Colour Grade Tool v3.2 — Ref Shot → LUT .cube</title>
 <style>
-:root{--bg:#16181c;--panel:#20242a;--panel2:#252a31;--line:#353c45;--text:#eef2f3;--muted:#9da8b0;--teal:#70aaa8;--teal2:#a1d1cc;--danger:#d58d8d}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}header,main{max-width:1240px;margin:auto}header{padding:38px 28px 26px}h1{font-size:28px;letter-spacing:-.03em;margin:0 0 8px}header p{color:var(--muted);margin:0}.layout{display:grid;grid-template-columns:310px 1fr;gap:18px;padding:0 28px 30px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.side{display:flex;flex-direction:column;gap:18px}.card h2{font-size:15px;margin:0 0 14px;letter-spacing:.01em}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--teal2);font-weight:700;margin-bottom:6px}.drop{border:1px dashed #53606a;border-radius:9px;padding:18px;text-align:center;color:var(--muted);transition:.15s}.drop.over{border-color:var(--teal);background:#263438}.drop input{display:none}.drop label{display:block;color:var(--teal2);font-weight:650;cursor:pointer;margin-bottom:5px}.ref-thumb{margin-top:12px;display:none;position:relative}.ref-thumb img{width:100%;height:145px;object-fit:contain;background:#111;border-radius:7px;display:block}.filename{font-size:12px;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.frames-input{width:100%;color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}.frame{aspect-ratio:1.25;border:2px solid transparent;border-radius:6px;overflow:hidden;background:#111;padding:0}.frame.active{border-color:var(--teal2)}.frame img{width:100%;height:100%;object-fit:cover;display:block}.main{min-width:0}.preview{padding:14px}.canvas-wrap{position:relative;background:#111;border-radius:8px;overflow:hidden;min-height:360px;display:flex;align-items:center;justify-content:center}.canvas-wrap canvas{display:block;max-width:100%;max-height:66vh;width:auto;height:auto}.empty{position:absolute;color:#7e8990;text-align:center;pointer-events:none}.empty strong{display:block;color:#a9b4b9;margin-bottom:5px}.split-label{position:absolute;top:12px;padding:4px 7px;border-radius:4px;background:#111b;color:#e6eeee;font-size:11px;pointer-events:none}.before-label{left:12px}.after-label{right:12px}.split-range{position:absolute;bottom:12px;left:10%;width:80%;accent-color:var(--teal2);opacity:.9}.range-readout{position:absolute;right:12px;bottom:12px;background:#111b;padding:3px 6px;border-radius:4px;color:var(--muted);font-size:11px;pointer-events:none}.settings{margin-top:18px}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px 24px}.control label{display:flex;justify-content:space-between;color:#d3dadd;margin-bottom:5px;font-size:13px}.control output{color:var(--teal2);font-variant-numeric:tabular-nums}.control input{width:100%;accent-color:var(--teal)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:7px;padding:8px 12px}.btn:hover{border-color:var(--teal);background:#29363a}.btn.primary{background:#386160;border-color:#5c9691;color:#f2fbfa}.btn.primary:hover{background:#477875}.presets{display:flex;gap:7px;flex-wrap:wrap}.preset{font-size:12px;padding:6px 9px}.export{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px}.status{color:var(--muted);font-size:12px;min-height:18px}.export .actions{margin:0}.notice{color:var(--muted);font-size:12px;margin-top:10px}@media(max-width:850px){.layout{grid-template-columns:1fr}.side{display:grid;grid-template-columns:1fr 1fr}.controls{grid-template-columns:1fr}.canvas-wrap{min-height:260px}}@media(max-width:560px){header{padding:26px 16px 20px}.layout{padding:0 16px 22px}.side{display:flex}.export{align-items:flex-start;flex-direction:column}}
+  :root{--bg:#0e0e10;--bg2:#131316;--panel:#1b1b1f;--panel2:#222227;--acc:#e8a33d;--acc2:#f0b95e;--txt:#eaeaea;--mut:#8a8a90;--line:#2b2b31;--radius:14px;--ok:#5ec26a;--warn:#e0b23d;--bad:#e05a4b;}
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
+  body{background:radial-gradient(1200px 600px at 80% -10%,rgba(232,163,61,.07),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(232,163,61,.05),transparent 60%),var(--bg);color:var(--txt);padding:28px 24px 48px;max-width:1240px;margin:auto;}
+  header.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+  h1{font-size:1.5rem;letter-spacing:.5px;} h1 b{color:var(--acc);}
+  .badge{font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--acc);border:1px solid var(--acc);border-radius:999px;padding:3px 10px;}
+  p.sub{color:var(--mut);font-size:.85rem;margin-bottom:24px;max-width:70ch;line-height:1.5;} p.sub b{color:var(--txt);font-weight:600;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 8px 30px rgba(0,0,0,.35);overflow:hidden;}
+  .card__head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel2);}
+  .card__title{font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--acc);font-weight:700;}
+  .card__hint{font-size:.7rem;color:var(--mut);}
+  .drop{position:relative;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s;}
+  .drop:hover,.drop.over{background:rgba(232,163,61,.05);}
+  .drop:hover .drop__ring,.drop.over .drop__ring{border-color:var(--acc);color:var(--acc);}
+  .drop__ring{border:2px dashed #3a3a42;border-radius:12px;margin:14px;padding:28px 22px;display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--mut);font-size:.82rem;text-align:center;line-height:1.5;transition:all .2s;flex:1;justify-content:center;width:100%;}
+  .drop__ico{font-size:1.8rem;}
+  .drop img,.drop canvas{max-width:100%;max-height:420px;display:block;}
+  .drop .imgwrap{width:100%;display:flex;justify-content:center;}
+  .thumbtag{position:absolute;top:10px;left:10px;font-size:.65rem;background:rgba(0,0,0,.75);padding:3px 10px;border-radius:6px;letter-spacing:1.5px;text-transform:uppercase;z-index:5;border:1px solid var(--line);}
+  .ba{position:relative;width:100%;user-select:none;overflow:hidden;}
+  .ba img,.ba canvas{width:100%;display:block;}
+  .ba canvas{position:absolute;inset:0;clip-path:inset(0 0 0 var(--split,50%));pointer-events:none;}
+  .ba__label{position:absolute;top:10px;font-size:.62rem;letter-spacing:1.5px;text-transform:uppercase;background:rgba(0,0,0,.75);border:1px solid var(--line);padding:3px 10px;border-radius:6px;z-index:4;pointer-events:none;}
+  .ba__label--before{left:10px;} .ba__label--after{right:10px;color:var(--acc);border-color:rgba(232,163,61,.5);}
+  .ba__handle{position:absolute;top:0;bottom:0;left:var(--split,50%);width:2px;background:var(--acc);z-index:3;cursor:ew-resize;box-shadow:0 0 14px rgba(232,163,61,.6);}
+  .ba__handle::after{content:'⇔';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--acc);color:#111;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.5);}
+  .ba__empty{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--mut);font-size:.82rem;gap:10px;}
+  .ba__empty .drop__ico{font-size:1.8rem;opacity:.6;}
+  .descore{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;display:flex;align-items:center;gap:20px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .descore__num{font-size:2rem;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums;min-width:110px;text-align:center;}
+  .descore__txt{font-size:.8rem;color:var(--mut);line-height:1.55;} .descore__txt b{color:var(--txt);}
+  .descore--ok{border-color:rgba(94,194,106,.5);} .descore--ok .descore__num{color:var(--ok);}
+  .descore--warn{border-color:rgba(224,178,61,.5);} .descore--warn .descore__num{color:var(--warn);}
+  .descore--bad{border-color:rgba(224,90,75,.5);} .descore--bad .descore__num{color:var(--bad);}
+  .stats{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;font-size:.8rem;display:none;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .stats h3{font-size:.7rem;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:10px;}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:4px 24px;}
+  .statrow{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);}
+  .statrow b{font-weight:600;color:var(--acc2);font-variant-numeric:tabular-nums;}
+  .controls{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:0 8px 30px rgba(0,0,0,.35);margin-bottom:18px;}
+  .ctl{margin-bottom:14px;}
+  .ctl label{display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:5px;color:#c9c9cf;}
+  .ctl label span{color:var(--acc);font-weight:600;font-variant-numeric:tabular-nums;}
+  input[type=range]{width:100%;accent-color:var(--acc);height:4px;}
+  .zgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;border-top:1px solid var(--line);padding-top:14px;margin-top:4px;}
+  .zgrid h4{font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--mut);margin-bottom:8px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center;}
+  button{background:var(--acc);color:#141414;border:0;padding:11px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem;transition:filter .15s,transform .05s;}
+  button:hover{filter:brightness(1.12);} button:active{transform:translateY(1px);}
+  button:disabled{opacity:.4;cursor:not-allowed;filter:none;}
+  button.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line);}
+  select,input[type=text]{background:var(--panel2);color:var(--txt);border:1px solid var(--line);padding:10px;border-radius:8px;font-size:.85rem;}
+  input[type=text]{flex:1;min-width:140px;}
+  .note{color:var(--mut);font-size:.72rem;margin-top:14px;line-height:1.6;border-top:1px solid var(--line);padding-top:12px;} .note b{color:#bbb;}
+  /* Scopes */
+  .scopes{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .scopes h3{font-size:.7rem;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:12px;}
+  .scopes__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+  .scope{display:flex;flex-direction:column;gap:6px;}
+  .scope canvas{width:100%;aspect-ratio:1/1;background:#101013;border:1px solid var(--line);border-radius:8px;}
+  .scope--wave canvas{aspect-ratio:16/9;}
+  .scope span{font-size:.65rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut);text-align:center;}
+  .scopes__empty{color:var(--mut);font-size:.78rem;}
+  /* Palette */
+  .palette{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .swatch{position:relative;width:64px;height:44px;border-radius:8px;border:1px solid var(--line);overflow:hidden;cursor:default;}
+  .swatch span{position:absolute;bottom:0;left:0;right:0;font-size:.58rem;text-align:center;background:rgba(0,0,0,.72);padding:2px 0;color:#fff;letter-spacing:.5px;}
+  .swatch em{position:absolute;top:0;left:0;right:0;font-size:.55rem;text-align:center;background:rgba(0,0,0,.55);padding:1px 0;color:rgba(255,255,255,.85);font-style:normal;}
+  .palette-title{font-size:.62rem;letter-spacing:1.8px;text-transform:uppercase;color:var(--mut);margin-top:14px;}
+.multi-rush-card{grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.multi-rush-card .card__title{flex-basis:100%}.file-pick{background:var(--panel2);border:1px solid var(--line);padding:9px 14px;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:700}.muted{color:var(--mut);font-size:.82rem}.weight-controls{margin:18px 0 8px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}.weight-controls h3{font-size:.72rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--acc);margin:0 0 12px}.weight-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}@media(max-width:700px){.weight-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header><div class="eyebrow">Color grading · local</div><h1>Color Grade Tool</h1><p>Importez une référence et vos frames, sélectionnez une image, puis ajustez le grade en temps réel.</p></header>
-<main class="layout">
-<aside class="side">
-<section class="card"><h2>1 · Image de référence</h2><div class="drop" id="refDrop"><label for="refInput">Choisir une image</label><span>ou déposer un fichier ici</span><input id="refInput" type="file" accept="image/*"></div><div class="ref-thumb" id="refThumb"><img id="refImage" alt="Référence"><div class="filename" id="refName"></div></div></section>
-<section class="card"><h2>2 · Mes frames</h2><input class="frames-input" id="framesInput" type="file" accept="image/*" multiple><div class="grid" id="frameGrid"></div><div class="notice" id="frameNotice">Aucune frame importée.</div></section>
-</aside>
-<section class="main">
-<section class="card preview"><h2>3 · Preview</h2><div class="canvas-wrap" id="canvasWrap"><canvas id="workCanvas"></canvas><div class="empty" id="emptyState"><strong>Votre preview apparaîtra ici</strong><span>Importez au moins une frame pour commencer.</span></div><span class="split-label before-label">Avant</span><span class="split-label after-label">Après</span><input class="split-range" id="splitRange" type="range" min="0" max="100" value="50" aria-label="Séparation avant après"><span class="range-readout" id="splitReadout">50%</span></div></section>
-<section class="card settings"><h2>4 · Réglages</h2><div class="controls">
-<div class="control"><label for="exposure">Exposition <output id="exposureOut">0.00</output></label><input id="exposure" type="range" min="-2" max="2" step=".01" value="0"></div>
-<div class="control"><label for="contrast">Contraste <output id="contrastOut">0</output></label><input id="contrast" type="range" min="-100" max="100" step="1" value="0"></div>
-<div class="control"><label for="saturation">Saturation <output id="saturationOut">0</output></label><input id="saturation" type="range" min="-100" max="100" step="1" value="0"></div>
-<div class="control"><label for="temperature">Balance chaud / froid <output id="temperatureOut">0</output></label><input id="temperature" type="range" min="-100" max="100" step="1" value="0"></div>
-<div class="control"><label for="lift">Lift <output id="liftOut">0.00</output></label><input id="lift" type="range" min="-.25" max=".25" step=".005" value="0"></div>
-<div class="control"><label for="gamma">Gamma <output id="gammaOut">1.00</output></label><input id="gamma" type="range" min=".5" max="2" step=".01" value="1"></div>
-<div class="control"><label for="gain">Gain <output id="gainOut">1.00</output></label><input id="gain" type="range" min=".5" max="1.5" step=".01" value="1"></div>
-</div><div class="actions"><button class="btn primary" id="autoMatch">Auto-match référence</button><div class="presets"><button class="btn preset" data-preset="neutral">Neutre</button><button class="btn preset" data-preset="warm">Chaud</button><button class="btn preset" data-preset="teal">Teal doux</button><button class="btn preset" data-preset="fade">Mat doux</button></div></div><div class="notice" id="status" aria-live="polite"></div></section>
-<section class="card export"><div><h2>6 · Export</h2><div class="status">Le PNG reprend le rendu « Après » de l'image active.</div></div><div class="actions"><button class="btn" id="downloadPng">Télécharger PNG</button><button class="btn primary" id="exportLut">Exporter LUT .cube</button></div></section>
-</section></main>
+<header class="top">
+  <h1>Colour <b>Grade</b> Tool</h1>
+  <span class="badge">v3.2 · scopes</span>
+</header>
+<p class="sub">Charge une <b>image de référence</b> (le look visé), puis une <b>frame de tes rushes</b> pour prévisualiser le résultat avec un slider avant/après. Export en <b>LUT .cube</b> pour DaVinci Resolve. Aucune image n'est envoyée sur un serveur.</p>
+
+<div class="grid">
+  <div class="card">
+    <div class="card__head"><span class="card__title">① Image de référence — look visé</span><span class="card__hint">glisser-déposer ou cliquer</span></div>
+    <div class="drop" id="dropRef">
+      <span class="thumbtag" style="display:none" id="tagRef">Référence chargée</span>
+      <div class="drop__ring" id="ringRef">
+        <span class="drop__ico">🎞️</span>
+        Glisse ici la frame de référence<br>(ou clique pour parcourir)
+      </div>
+      <div class="imgwrap"><img id="imgRef" style="display:none" alt="Frame de référence"></div>
+      <div style="width:100%;padding:0 16px 16px">
+        <div class="palette-title" id="paletteTitle" style="display:none">Palette dominante de la référence</div>
+        <div class="palette" id="palette" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card__head"><span class="card__title">② Prévisualisation — avant / après</span><span class="card__hint">glisse la poignée ⇔</span></div>
+    <div class="drop" id="dropPrev">
+      <span class="thumbtag" style="display:none" id="tagPrev">Rush chargé</span>
+      <div class="ba" id="baPrev" style="display:none">
+        <img id="baBefore" alt="Avant">
+        <canvas id="cvPrev"></canvas>
+        <span class="ba__label ba__label--before">Avant</span>
+        <span class="ba__label ba__label--after">Après · LUT</span>
+        <div class="ba__handle" id="baHandle"></div>
+      </div>
+      <div class="ba__empty" id="baEmpty">
+        <span class="drop__ico">🎬</span>
+        Glisse une frame de tes rushes<br>pour comparer avant / après
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card multi-rush-card">
+  <div class="card__title">Match multi-rushs</div>
+  <p class="sub" style="margin:8px 0 12px">Ajoute plusieurs frames pour optimiser le match sur l’ensemble des rushs.</p>
+  <label class="file-pick" for="rushFiles">＋ Ajouter des rushs</label>
+  <input id="rushFiles" type="file" accept="image/*" multiple hidden>
+  <span id="rushCount" class="muted">Aucun rush additionnel</span>
+</div>
+
+<div class="descore" id="deBox">
+  <div class="descore__num" id="deNum">—</div>
+  <div class="descore__txt" id="deTxt"><b>Score de match ΔE (CIEDE2000)</b><br>Charge une référence ET une frame de rush pour mesurer la fidélité du look gradé vs la référence.</div>
+</div>
+
+<div class="scopes" id="scopesBox">
+  <h3>Scopes — contrôle de l’image gradée</h3>
+  <div class="scopes__empty" id="scopesEmpty">Charge une frame de rush pour activer le vectorscope et le waveform RGB.</div>
+  <div class="scopes__grid" id="scopesGrid" style="display:none">
+    <div class="scope"><canvas id="cvVector" width="256" height="256"></canvas><span>Vectorscope (U·V, gradé)</span></div>
+    <div class="scope scope--wave"><canvas id="cvWave" width="512" height="256"></canvas><span>Waveform RGB (gradé)</span></div>
+  </div>
+</div>
+
+<div class="stats" id="statsBox">
+  <h3>Analyse de la référence (espace linéaire, Rec.709)</h3>
+  <div class="statgrid" id="statsBody"></div>
+</div>
+
+<div class="controls">
+  <div class="ctl"><label>Intensité du look <span id="vInt">100%</span></label><input type="range" id="intensity" min="0" max="100" value="100"></div>
+  <div class="ctl"><label>Saturation <span id="vSat">auto</span></label><input type="range" id="sat" min="0" max="200" value="100"></div>
+  <div class="ctl"><label>Chaleur (R/B) <span id="vWarm">auto</span></label><input type="range" id="warm" min="-100" max="100" value="0"></div>
+  <div class="ctl"><label>Crush des noirs <span id="vCrush">auto</span></label><input type="range" id="crush" min="0" max="100" value="50"></div>
+  <div class="ctl"><label>Contraste <span id="vCon">auto</span></label><input type="range" id="con" min="50" max="150" value="100"></div>
+  <div class="ctl"><label><span style="color:#c9c9cf"><input type="checkbox" id="inputLog" checked> Input log — normaliser avant le grade</span><span id="vLog">ON</span></label></div>
+
+  <div class="weight-controls" aria-labelledby="weightTitle">
+    <h3 id="weightTitle">Importance des zones pour l’auto-match</h3>
+    <div class="weight-grid">
+      <div class="ctl"><label>Tons chair <span id="vWskin">3.5</span></label><input type="range" id="wSkin" min="0" max="5" step="0.1" value="3.5"></div>
+      <div class="ctl"><label>Zones détaillées <span id="vWdetail">1.6</span></label><input type="range" id="wDetail" min="0" max="5" step="0.1" value="1.6"></div>
+      <div class="ctl"><label>Extrêmes <span id="vWextreme">0.35</span></label><input type="range" id="wExtreme" min="0" max="5" step="0.05" value="0.35"></div>
+    </div>
+  </div>
+
+  <div class="zgrid">
+    <div>
+      <h4>Ombres</h4>
+      <div class="ctl"><label>Exposition <span id="vZSh">0.00</span></label><input type="range" id="zSh" min="-100" max="100" value="0"></div>
+      <div class="ctl"><label>Chaleur <span id="vZShW">0</span></label><input type="range" id="zShW" min="-100" max="100" value="0"></div>
+    </div>
+    <div>
+      <h4>Mid-tones</h4>
+      <div class="ctl"><label>Exposition <span id="vZMd">0.00</span></label><input type="range" id="zMd" min="-100" max="100" value="0"></div>
+      <div class="ctl"><label>Chaleur <span id="vZMdW">0</span></label><input type="range" id="zMdW" min="-100" max="100" value="0"></div>
+    </div>
+    <div>
+      <h4>Hautes lumières</h4>
+      <div class="ctl"><label><span id="vZHi">0.00</span></label><input type="range" id="zHi" min="-100" max="100" value="0"></div>
+      <div class="ctl"><label><span id="vZHiW">0</span></label><input type="range" id="zHiW" min="-100" max="100" value="0"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="btnDl">⬇ Exporter la LUT .cube</button>
+    <button id="btnReport" class="sec">📄 Rapport de match</button>
+    <button id="btnAuto" class="sec">🎯 Match auto</button>
+    <button id="btnReset" class="sec">↺ Reset</button>
+    <select id="lutSize">
+      <option value="33" selected>LUT 33³ (rapide)</option>
+      <option value="65">LUT 65³ (précise)</option>
+    </select>
+  </div>
+  <div class="row">
+    <input type="text" id="presetName" placeholder="Nom du preset…">
+    <button id="btnSave" class="sec">💾 Save</button>
+    <select id="presetList"><option>— Presets sauvegardés —</option></select>
+    <button id="btnLoad" class="sec">Charger</button>
+    <button id="btnDel" class="sec">🗑</button>
+  </div>
+  <div class="note"><b>Conseil :</b> utilise une frame de rush dont le contenu ressemble à la référence (cadrage, exposition) pour un match optimal. La LUT s'applique à l'image entière — pour un grading par plans, génère une LUT par type de plan.</div>
+</div>
+
 <script>
-(() => {
-'use strict';
-const $ = id => document.getElementById(id);
-const state = { reference:null, frames:[], active:-1, sourcePixels:null, width:0, height:0, raf:0 };
-const controls = ['exposure','contrast','saturation','temperature','lift','gamma','gain'];
-const clamp = (v,a=0,b=1) => Math.max(a,Math.min(b,v));
-function readGrade(){ return Object.fromEntries(controls.map(id => [id,Number($(id).value)])); }
-function setGrade(g){ controls.forEach(id => { if(g[id] !== undefined) $(id).value=g[id]; }); updateOutputs(); render(); }
-function updateOutputs(){ controls.forEach(id => { const v=Number($(id).value); $(id+'Out').value = id==='exposure'||id==='lift'||id==='gamma'||id==='gain' ? v.toFixed(2) : (v>0?'+':'')+Math.round(v); }); }
-function loadImage(file){ return new Promise((resolve,reject) => { const img=new Image(); img.onload=()=>{URL.revokeObjectURL(img.src);resolve(img)}; img.onerror=reject; img.src=URL.createObjectURL(file); }); }
-function drawSource(img){ const max=1500, scale=Math.min(1,max/img.naturalWidth,max/img.naturalHeight); state.width=Math.max(1,Math.round(img.naturalWidth*scale)); state.height=Math.max(1,Math.round(img.naturalHeight*scale)); const c=document.createElement('canvas');c.width=state.width;c.height=state.height;c.getContext('2d').drawImage(img,0,0,c.width,c.height);state.sourcePixels=c.getContext('2d').getImageData(0,0,c.width,c.height); $('workCanvas').width=state.width;$('workCanvas').height=state.height;$('emptyState').style.display='none';render(); }
-async function setReference(file){ if(!file)return; try{const img=await loadImage(file);state.reference=img;$('refImage').src=img.src;$('refName').textContent=file.name;$('refThumb').style.display='block';$('status').textContent='Référence chargée.';}catch(e){$('status').textContent='Impossible de lire cette image.';} }
-async function addFrames(files){ for(const file of files){try{const img=await loadImage(file);state.frames.push({file,img});}catch(e){}}; state.active=state.frames.length?state.frames.length-1:-1;renderFrameGrid();selectFrame(state.active); }
-function renderFrameGrid(){ $('frameGrid').innerHTML=''; state.frames.forEach((f,i)=>{const b=document.createElement('button');b.className='frame'+(i===state.active?' active':'');b.title=f.file.name;const im=document.createElement('img');im.src=f.img.src;im.alt=f.file.name;b.appendChild(im);b.addEventListener('click',()=>selectFrame(i));$('frameGrid').appendChild(b)});$('frameNotice').textContent=state.frames.length?state.frames.length+' frame'+(state.frames.length>1?'s':'')+' importée'+(state.frames.length>1?'s':'')+'.':'Aucune frame importée.'; }
-function selectFrame(i){if(i<0||!state.frames[i])return;state.active=i;renderFrameGrid();drawSource(state.frames[i].img);$('status').textContent='Frame active : '+state.frames[i].file.name;}
-function gradePixel(r,g,b,grade){let e=Math.pow(2,grade.exposure);r*=e;g*=e;b*=e;const lift=grade.lift; r=r*grade.gain+lift;g=g*grade.gain+lift;b=b*grade.gain+lift;const gam=Math.max(.01,grade.gamma);r=Math.pow(clamp(r),1/gam);g=Math.pow(clamp(g),1/gam);b=Math.pow(clamp(b),1/gam);const con=1+grade.contrast/100;r=clamp((r-.5)*con+.5);g=clamp((g-.5)*con+.5);b=clamp((b-.5)*con+.5);const sat=1+grade.saturation/100;const y=.2126*r+.7152*g+.0722*b;r=clamp(y+(r-y)*sat);g=clamp(y+(g-y)*sat);b=clamp(y+(b-y)*sat);const t=grade.temperature/100*.12;r=clamp(r+t);b=clamp(b-t);return [r,g,b];}
-function render(){if(!state.sourcePixels)return;cancelAnimationFrame(state.raf);state.raf=requestAnimationFrame(()=>{const src=state.sourcePixels.data,out=new Uint8ClampedArray(src.length),g=readGrade();for(let i=0;i<src.length;i+=4){const p=gradePixel(src[i]/255,src[i+1]/255,src[i+2]/255,g);out[i]=p[0]*255;out[i+1]=p[1]*255;out[i+2]=p[2]*255;out[i+3]=src[i+3];}const c=$('workCanvas'),ctx=c.getContext('2d');ctx.putImageData(new ImageData(out,state.width,state.height),0,0);const split=Number($('splitRange').value)/100;ctx.save();ctx.beginPath();ctx.rect(0,0,state.width*split,state.height);ctx.clip();ctx.putImageData(state.sourcePixels,0,0);ctx.restore();});}
-function percentile(values,p){values.sort((a,b)=>a-b);return values[Math.floor((values.length-1)*p)];}
-function imageStats(img){const c=document.createElement('canvas');c.width=Math.min(320,img.naturalWidth);c.height=Math.max(1,Math.round(img.naturalHeight*c.width/img.naturalWidth));const x=c.getContext('2d');x.drawImage(img,0,0,c.width,c.height);const d=x.getImageData(0,0,c.width,c.height).data, bins=[[],[],[]];for(let i=0;i<d.length;i+=4)for(let ch=0;ch<3;ch++)bins[ch].push(Math.log2(d[i+ch]/255*.98+.01));return {p2:bins.map(v=>percentile(v,.02)),p50:bins.map(v=>percentile(v,.5)),p98:bins.map(v=>percentile(v,.98))};}
-function autoMatch(){if(!state.reference||state.active<0){$('status').textContent='Importez une référence et une frame avant l’auto-match.';return}const ref=imageStats(state.reference),src=imageStats(state.frames[state.active].img);const mean=a=>a.reduce((x,y)=>x+y,0)/3;const targetLift=mean(ref.p2)-mean(src.p2);const spanSrc=mean(src.p98)-mean(src.p2),spanRef=mean(ref.p98)-mean(ref.p2);const gain=clamp(spanRef/Math.max(.05,spanSrc),.6,1.5);const exp=clamp(mean(ref.p50)-mean(src.p50),-2,2);const sat=clamp((spanRef/spanSrc-1)*35,-45,45);setGrade({lift:clamp(targetLift*.18,-.25,.25),gain,exposure:exp,contrast:0,saturation:sat,temperature:0,gamma:1});$('status').textContent='Auto-match appliqué (P2 / P50 / P98 en log2).';}
-function download(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);}
-function exportPng(){if(!state.sourcePixels){$('status').textContent='Importez une frame avant l’export.';return}const c=document.createElement('canvas');c.width=state.width;c.height=state.height;c.getContext('2d').drawImage($('workCanvas'),0,0);c.toBlob(b=>download('graded-frame.png',b),'image/png');}
-function exportLut(){const g=readGrade(),n=33,lines=['TITLE "Color Grade Tool"','LUT_3D_SIZE '+n,'DOMAIN_MIN 0.0 0.0 0.0','DOMAIN_MAX 1.0 1.0 1.0'];for(let b=0;b<n;b++)for(let gg=0;gg<n;gg++)for(let r=0;r<n;r++){const p=gradePixel(r/(n-1),gg/(n-1),b/(n-1),g);lines.push(p.map(v=>v.toFixed(6)).join(' '));}download('color-grade.cube',new Blob([lines.join('\n')+'\n'],{type:'text/plain'}));}
-$('refInput').addEventListener('change',e=>setReference(e.target.files[0]));$('framesInput').addEventListener('change',e=>addFrames([...e.target.files]));['dragenter','dragover'].forEach(ev=>$('refDrop').addEventListener(ev,e=>{e.preventDefault();$('refDrop').classList.add('over')}));['dragleave','drop'].forEach(ev=>$('refDrop').addEventListener(ev,e=>{e.preventDefault();$('refDrop').classList.remove('over')}));$('refDrop').addEventListener('drop',e=>setReference(e.dataTransfer.files[0]));controls.forEach(id=>$(id).addEventListener('input',()=>{updateOutputs();render()}));$('splitRange').addEventListener('input',e=>{$('splitReadout').textContent=e.target.value+'%';render()});$('autoMatch').addEventListener('click',autoMatch);$('downloadPng').addEventListener('click',exportPng);$('exportLut').addEventListener('click',exportLut);document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.preset;setGrade(p==='warm'?{temperature:35,saturation:8,contrast:5}:p==='teal'?{temperature:-25,saturation:12,contrast:8}:p==='fade'?{contrast:-18,saturation:-12,lift:.04,gain:.96}:{});$('status').textContent='Preset « '+b.textContent+' » appliqué.';}));updateOutputs();
-})();
-</script></body></html>
+const $=id=>document.getElementById(id);
+let refStats=null,lut=null,prevImg=null,rushImgs=[];
+
+// ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
+function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
+function lin2srgb(c){return c<=0.0031308?c*12.92:1.055*Math.pow(c,1/2.4)-0.055;}
+function clamp(x,a,b){return Math.min(b,Math.max(a,x));}
+// Log-like camera inputs must be expanded before any creative operation.
+// The defaults cover the lifted-black / low-contrast material this tool targets.
+function normalizeInput(c){
+  if(!$('inputLog') || !$('inputLog').checked)return clamp(c,0,1);
+  return clamp((c-0.20)/(0.90-0.20),0,1);
+}
+
+// ---------- Linear sRGB -> Lab ----------
+function lin2xyz(r,g,b){
+  const X=0.4124*r+0.3576*g+0.1805*b, Y=0.2126*r+0.7152*g+0.0722*b, Z=0.0193*r+0.1192*g+0.9505*b;
+  return [X/0.95047,Y/1.0,Z/1.08883];
+}
+function fxyz(t){return t>0.008856?Math.cbrt(t):(903.3*t+16)/116;}
+function xyz2lab(X,Y,Z){
+  const fx=fxyz(X),fy=fxyz(Y),fz=fxyz(Z);
+  return [116*fy-16,500*(fx-fy),200*(fy-fz)];
+}
+function rgb2lab(r,g,b){const[x,y,z]=lin2xyz(r,g,b);return xyz2lab(x,y,z);}
+
+// ---------- CIEDE2000 (Sharma et al. 2005) ----------
+function deltaE2000(l1,a1,b1,l2,a2,b2){
+  const C1=Math.hypot(a1,b1),C2=Math.hypot(a2,b2),Cm=(C1+C2)/2;
+  const G=0.5*(1-Math.sqrt(Math.pow(Cm,7)/(Math.pow(Cm,7)+Math.pow(25,7))));
+  const a1p=a1*(1+G),a2p=a2*(1+G);
+  const C1p=Math.hypot(a1p,b1),C2p=Math.hypot(a2p,b2);
+  let h1p=Math.atan2(b1,a1p),h2p=Math.atan2(b2,a2p);
+  if(h1p<0)h1p+=2*Math.PI; if(h2p<0)h2p+=2*Math.PI;
+  const dCp=C2p-C1p;
+  let dhp=h2p-h1p;
+  if(dhp>Math.PI)dhp-=2*Math.PI; else if(dhp<-Math.PI)dhp+=2*Math.PI;
+  const dLp=l2-l1, dHp=2*Math.sqrt(C1p*C2p)*Math.sin(dhp/2);
+  const Lpm=(l1+l2)/2, Cpm=(C1p+C2p)/2;
+  let hm=h1p+h2p;
+  if(C1p*C2p!==0){
+    if(Math.abs(h1p-h2p)<=Math.PI)hm/=2;
+    else if(h1p+h2p<2*Math.PI)hm=(h1p+h2p+2*Math.PI)/2;
+    else hm=(h1p+h2p-2*Math.PI)/2;
+  }
+  const T=1-0.17*Math.cos(hm-Math.PI/6)+0.24*Math.cos(2*hm)+0.32*Math.cos(3*hm+Math.PI/30)-0.20*Math.cos(4*hm-63*Math.PI/180);
+  const dTheta=30*Math.exp(-Math.pow((hm-275*Math.PI/180)/25,2));
+  const C7=Math.pow(Cpm,7);
+  const SC=1+0.0015*Cpm*Math.sqrt(C7/(C7+Math.pow(25,7)));
+  const L50=(Lpm-50)*(Lpm-50);
+  const SL=1+0.015*L50/Math.sqrt(20+L50);
+  const SH=1+0.015*Cpm*T;
+  const RT=-2*Math.sqrt(C7/(C7+Math.pow(25,7)))*Math.sin(2*dTheta*Math.PI/180);
+  return Math.sqrt(Math.pow(dLp/SL,2)+Math.pow(dCp/SC,2)+Math.pow(dHp/SH,2)+RT*(dCp/SC)*(dHp/SH));
+}
+
+// ---------- Chargement d'image (robuste) ----------
+function loadImageFile(f,cb){
+  if(!f)return;
+  if(!f.type||!f.type.startsWith('image/')){alert('⚠ Fichier non reconnu comme image ('+(f.type||'type inconnu')+')');return;}
+  const url=URL.createObjectURL(f),img=new Image();
+  img.onload=()=>{URL.revokeObjectURL(url);cb(img);};img.onerror=()=>{URL.revokeObjectURL(url);alert('Impossible de décoder cette image.');};img.src=url;
+}
+function setupDrop(id,cb){
+  const el=$(id),ring=el.querySelector('.drop__ring');
+  el.addEventListener('click',()=>{const input=document.createElement('input');input.type='file';input.accept='image/*';input.onchange=e=>loadImageFile(e.target.files[0],cb);input.click();});
+  el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('over');});el.addEventListener('dragleave',()=>el.classList.remove('over'));el.addEventListener('drop',e=>{e.preventDefault();el.classList.remove('over');loadImageFile(e.dataTransfer.files[0],cb);});
+}
+
+// ---------- Analyse image référence ----------
+function analyze(img){
+  const cv=document.createElement('canvas'),max=512,sc=Math.min(1,max/img.width);cv.width=Math.max(1,img.width*sc);cv.height=Math.max(1,img.height*sc);const c=cv.getContext('2d',{willReadFrequently:true});c.drawImage(img,0,0,cv.width,cv.height);const d=c.getImageData(0,0,cv.width,cv.height).data,ys=[];let sr=0,sg=0,sb=0,n=0,loR=0,loB=0,hiR=0,hiB=0;
+  for(let i=0;i<d.length;i+=4){const r=srgb2lin(d[i]/255),g=srgb2lin(d[i+1]/255),b=srgb2lin(d[i+2]/255),y=.2126*r+.7152*g+.0722*b;ys.push(y);sr+=r;sg+=g;sb+=b;n++;if(y<.25){loR+=r;loB+=b;}if(y>.75){hiR+=r;hiB+=b;}}
+  ys.sort((a,b)=>a-b);const q=p=>ys[Math.min(ys.length-1,Math.floor(p*ys.length))]||0;return{p1:q(.01),p5:q(.05),p25:q(.25),p50:q(.5),p75:q(.75),p95:q(.95),p99:q(.99),meanR:sr/n,meanG:sg/n,meanB:sb/n,sat:0,warmLo:loB?loR/loB:1,warmHi:hiB?hiR/hiB:1};
+}
+function buildPalette(img,k=6){
+  const cv=document.createElement('canvas'),w=96,h=96;cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);const d=cv.getContext('2d').getImageData(0,0,w,h).data,pts=[];for(let i=0;i<d.length;i+=16)pts.push([d[i],d[i+1],d[i+2]]);
+  let cent=pts.slice(0,k),assign=[];for(let it=0;it<8;it++){assign=pts.map(p=>{let bi=0,bd=1e9;cent.forEach((c,i)=>{const dd=(p[0]-c[0])**2+(p[1]-c[1])**2+(p[2]-c[2])**2;if(dd<bd){bd=dd;bi=i;}});return bi;});cent=cent.map((c,i)=>{const g=pts.filter((_,j)=>assign[j]===i);return g.length?[0,1,2].map(x=>g.reduce((s,p)=>s+p[x],0)/g.length):c;});}const counts=assign.reduce((a,x)=>(a[x]++,a),Array(k).fill(0));return cent.map((c,i)=>({hex:'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join(''),pct:counts[i]/pts.length*100})).sort((a,b)=>b.pct-a.pct);
+}
+function showPalette(img){const pal=buildPalette(img,6),el=$('palette');el.innerHTML=pal.map(s=>`<div class="swatch" style="background:${s.hex}" title="${s.hex} — ${s.pct.toFixed(1)}%"><em>${s.pct.toFixed(0)}%</em><span>${s.hex}</span></div>`).join('');el.style.display='flex';$('paletteTitle').style.display='block';}
+function fmt(x,d=3){return x.toFixed(d);}
+function showStats(s){$('statsBox').style.display='block';const rows=[['Noirs P1 / P5',fmt(s.p1)+' / '+fmt(s.p5)],['P25 / P50 / P75',fmt(s.p25)+' / '+fmt(s.p50)+' / '+fmt(s.p75)],['P95 / P99',fmt(s.p95)+' / '+fmt(s.p99)],['Saturation moyenne',fmt(s.sat*100,1)+' %'],['Chaleur ombres (R/B)',fmt(s.warmLo,2)],['Chaleur hautes lumières (R/B)',fmt(s.warmHi,2)],['Dynamic range P5→P95',fmt(Math.log2(Math.max(s.p95,1e-6)/Math.max(s.p5,1e-6)),1)+' stops']];$('statsBody').innerHTML=rows.map(r=>`<div class="statrow"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');}
+function buildToneLUT(s,crushAmt,conAmt){const mid=.42,inA=[0,.0625,.25,.5,.75,1],outA=[Math.max(s.p1*(1-crushAmt*.6),0),Math.max(s.p5*(1-crushAmt*.35),0),s.p25,s.p50,s.p75,Math.min(s.p99,1)].map(v=>clamp(mid+(v-s.p50)*conAmt,0,1));outA[3]=mid;for(let i=1;i<outA.length;i++)outA[i]=Math.max(outA[i],outA[i-1]+.001);const N=4096,lutT=new Float32Array(N),slope=(outA[1]-outA[0])/(inA[1]-inA[0]);for(let i=0;i<N;i++){const x=i/(N-1),k=Math.min(4,Math.floor(x*5)),t=clamp((x-inA[k])/(inA[k+1]-inA[k]),0,1),m0=k? (outA[k]-outA[k-1])/(inA[k]-inA[k-1]):slope,m1=(outA[k+1]-outA[k])/(inA[k+1]-inA[k]),h=inA[k+1]-inA[k],h00=(1+2*t)*(1-t)*(1-t),h10=t*(1-t)*(1-t),h01=t*t*(3-2*t),h11=t*t*(t-1);lutT[i]=clamp(h00*outA[k]+h10*h*m0+h01*outA[k+1]+h11*h*m1,0,1);}return lutT;}
+function applyTone(lutT,v){const N=lutT.length-1,x=clamp(v,0,1)*N,i=Math.min(Math.floor(x),N-1),f=x-i;return lutT[i]*(1-f)+lutT[i+1]*f;}
+function getZoneVals(){return{sh:+$('zSh').value/100,shW:+$('zShW').value/100,md:+$('zMd').value/100,mdW:+$('zMdW').value/100,hi:+$('zHi').value/100,hiW:+$('zHiW').value/100};}
+function generateLUT(size){const n=Math.max(2,Math.round(size||17)),data=new Float32Array(n*n*n*3),p={sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,zSh:+$('zSh').value,zShW:+$('zShW').value,zMd:+$('zMd').value,zMdW:+$('zMdW').value,zHi:+$('zHi').value,zHiW:+$('zHiW').value};function correct(r,g,b){const sat=p.sat/100,con=p.con/100,warm=p.warm/100,lum=.2126*r+.7152*g+.0722*b;let R=(r-.5)*con+.5,G=(g-.5)*con+.5,B=(b-.5)*con+.5;const z=lum<.33?p.zSh/100:lum>.66?p.zHi/100:p.zMd/100,zw=lum<.33?p.zShW/100:lum>.66?p.zHiW/100:p.zMdW/100,ex=Math.pow(2,z*.6);R*=ex;G*=ex;B*=ex;const y=.2126*R+.7152*G+.0722*B;R=y+(R-y)*sat;G=y+(G-y)*sat;B=y+(B-y)*sat;const ww=1+warm*.5+zw*.08;return[clamp(R*ww,0,1),clamp(G,0,1),clamp(B/ww,0,1)];}let k=0;for(let bi=0;bi<n;bi++)for(let gi=0;gi<n;gi++)for(let ri=0;ri<n;ri++){const q=correct(srgb2lin(normalizeInput(ri/(n-1))),srgb2lin(normalizeInput(gi/(n-1))),srgb2lin(normalizeInput(bi/(n-1))));data[k++]=q[0];data[k++]=q[1];data[k++]=q[2];}lut={size:n,data};if(prevImg)renderPrev(prevImg);}
+function lutTetra(r,g,b){const S=lut.size,D=lut.data,x=clamp(r,0,1)*(S-1),y=clamp(g,0,1)*(S-1),z=clamp(b,0,1)*(S-1),i0=Math.min(Math.floor(x),S-2),j0=Math.min(Math.floor(y),S-2),k0=Math.min(Math.floor(z),S-2),fx=x-i0,fy=y-j0,fz=z-k0,idx=(i,j,k)=>(k*S*S+j*S+i)*3,c000=idx(i0,j0,k0),c100=idx(i0+1,j0,k0),c010=idx(i0,j0+1,k0),c110=idx(i0+1,j0+1,k0),c001=idx(i0,j0,k0+1),c101=idx(i0+1,j0,k0+1),c011=idx(i0,j0+1,k0+1),c111=idx(i0+1,j0+1,k0+1);let out=[0,0,0];const acc=(w,v0,v1,v2)=>{out[0]+=w*v0;out[1]+=w*v1;out[2]+=w*v2;};if(fx>fy){if(fy>fz){acc(fx,D[c100],D[c100+1],D[c100+2]);acc(fy,D[c110],D[c110+1],D[c110+2]);acc(fz,D[c111],D[c111+1],D[c111+2]);}else if(fx>fz){acc(fx,D[c100],D[c100+1],D[c100+2]);acc(fz,D[c101],D[c101+1],D[c101+2]);acc(fy,D[c111],D[c111+1],D[c111+2]);}else{acc(fz,D[c001],D[c001+1],D[c001+2]);acc(fx,D[c101],D[c101+1],D[c101+2]);acc(fy,D[c111],D[c111+1],D[c111+2]);}}else{if(fz>fy){acc(fz,D[c001],D[c001+1],D[c001+2]);acc(fy,D[c011],D[c011+1],D[c011+2]);acc(fx,D[c111],D[c111+1],D[c111+2]);}else if(fx>fz){acc(fy,D[c010],D[c010+1],D[c010+2]);acc(fx,D[c110],D[c110+1],D[c110+2]);acc(fz,D[c111],D[c111+1],D[c111+2]);}else{acc(fy,D[c010],D[c010+1],D[c010+2]);acc(fz,D[c011],D[c011+1],D[c011+2]);acc(fx,D[c111],D[c111+1],D[c111+2]);}}const base=idx(i0,j0,k0),baseW=1-fx-fy-fz;out[0]=baseW*D[base]+out[0];out[1]=baseW*D[base+1]+out[1];out[2]=baseW*D[base+2]+out[2];return out.map(x=>clamp(x,0,1));}
+function refMeanLab(){return refStats?rgb2lab(refStats.meanR,refStats.meanG,refStats.meanB):null;}
+function syncLabels(){$('vInt').textContent=$('intensity').value+'%';$('vSat').textContent=$('sat').value==100?'auto':$('sat').value+'%';$('vWarm').textContent=$('warm').value==0?'auto':$('warm').value;$('vCrush').textContent=$('crush').value==50?'auto':$('crush').value;$('vCon').textContent=$('con').value==100?'auto':$('con').value+'%';$('vLog').textContent=$('inputLog').checked?'ON':'OFF';['Sh','Md','Hi'].forEach(z=>{$('vZ'+z).textContent=(+$('z'+z).value/100).toFixed(2);$('vZ'+z+'W').textContent=$('z'+z+'W').value;});}
+function renderPrev(img){if(!lut)return;const cv=$('cvPrev'),scale=Math.min(1,1280/img.width);cv.width=Math.max(1,Math.round(img.width*scale));cv.height=Math.max(1,Math.round(img.height*scale));$('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';const before=$('baBefore');if(before.src!==img.src)before.src=img.src;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,cv.width,cv.height);const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data;for(let i=0;i<d.length;i+=4){const R0=lutTetra(d[i]/255,d[i+1]/255,d[i+2]/255);d[i]=R0[0]*255;d[i+1]=R0[1]*255;d[i+2]=R0[2]*255;}ctx.putImageData(id,0,0);drawScopes(img);}
+function download(){if(!lut)return;let out='# Created with Colour Grade Tool v3.2\nLUT_3D_SIZE '+lut.size+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';for(let i=0;i<lut.data.length;i+=3)out+=lut.data[i].toFixed(6)+' '+lut.data[i+1].toFixed(6)+' '+lut.data[i+2].toFixed(6)+'\n';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([out],{type:'text/plain'}));a.download='colour_grade_tool_look.cube';a.click();}
+const PKEY='cgt_presets_v31';const CTL_IDS=['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW','wSkin','wDetail','wExtreme','inputLog'];
+function loadPresets(){try{return JSON.parse(localStorage.getItem(PKEY))||{};}catch(e){return {};}}function refreshPresetList(){const ps=loadPresets();$('presetList').innerHTML='<option value="">— Presets sauvegardés —</option>'+Object.keys(ps).map(k=>`<option>${k}</option>`).join('');}function savePreset(){const name=$('presetName').value.trim();if(!name){$('presetName').placeholder='⚠ Donne un nom au preset';return;}const ps=loadPresets();ps[name]={};CTL_IDS.forEach(id=>ps[name][id]=$(id).type==='checkbox'?$(id).checked:$(id).value);localStorage.setItem(PKEY,JSON.stringify(ps));$('presetName').value='';refreshPresetList();$('presetList').value=name;}function applyPreset(){const name=$('presetList').value;if(!name)return;const ps=loadPresets();if(!ps[name])return;CTL_IDS.forEach(id=>{if(ps[name][id]!==undefined){if($(id).type==='checkbox')$(id).checked=!!ps[name][id];else $(id).value=ps[name][id];}});syncLabels();if(refStats)generateLUT(+$('lutSize').value);}function deletePreset(){const name=$('presetList').value;if(!name)return;const ps=loadPresets();delete ps[name];localStorage.setItem(PKEY,JSON.stringify(ps));refreshPresetList();}
+$('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});setupDrop('dropRef',img=>{refStats=analyze(img);showStats(refStats);showPalette(img);$('imgRef').src=img.src;$('imgRef').style.display='block';$('ringRef').style.display='none';$('tagRef').style.display='block';generateLUT(+$('lutSize').value);});setupDrop('dropPrev',img=>{prevImg=img;if(!lut){$('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';$('baBefore').src=img.src;const cv=$('cvPrev');cv.width=img.width;cv.height=img.height;cv.getContext('2d').drawImage(img,0,0);return;}renderPrev(img);});['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW','wSkin','wDetail','wExtreme','inputLog'].forEach(id=>$(id).addEventListener('input',()=>{syncLabels();if(refStats)generateLUT(+$('lutSize').value);}));$('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});$('btnDl').addEventListener('click',download);$('btnReset').addEventListener('click',()=>{$('intensity').value=100;$('sat').value=100;$('warm').value=0;$('crush').value=50;$('con').value=100;$('inputLog').checked=true;['zSh','zShW','zMd','zMdW','zHi','zHiW'].forEach(id=>$(id).value=0);syncLabels();if(refStats)generateLUT(+$('lutSize').value);});syncLabels();refreshPresetList();
+</script>
+<script src="colormatch.js"></script>
+</body>
+</html>
