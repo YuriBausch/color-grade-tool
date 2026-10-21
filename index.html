@@ -186,6 +186,9 @@
   <div class="row">
     <button id="btnDl">⬇ Exporter la LUT .cube</button>
     <button id="btnReport" class="sec">📄 Rapport de match</button>
+    <button id="btnExportPreset" class="sec">💾 Exporter preset</button>
+    <button id="btnImportPreset" class="sec">📂 Importer preset</button>
+    <input type="file" id="presetFile" accept="application/json,.json" hidden>
     <button id="btnAuto" class="sec">🎯 Match auto</button>
     <button id="btnReset" class="sec">↺ Reset</button>
     <select id="lutSize">
@@ -649,6 +652,37 @@ function deletePreset(){
   localStorage.setItem(PKEY,JSON.stringify(ps));refreshPresetList();
 }
 
+// ---------- Presets JSON export/import ----------
+const PRESET_JSON_VERSION=1;
+function exportPresetJSON(){
+  const controls={};CTL_IDS.forEach(id=>controls[id]=$(id).value);
+  controls.lutSize=$('lutSize').value;
+  const presetName=$('presetList').value||$('presetName').value.trim()||'';
+  const data={version:PRESET_JSON_VERSION,date:new Date().toISOString(),presetName,controls};
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='preset-'+stamp+'.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function importPresetJSON(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      if(!data || data.version!==PRESET_JSON_VERSION || !data.controls || typeof data.controls!== 'object')
+        throw new Error('Preset incompatible : version ou champs manquants.');
+      const ids=CTL_IDS.concat('lutSize');
+      ids.forEach(id=>{if(data.controls[id]!==undefined && $(id))$(id).value=data.controls[id];});
+      syncLabels();
+      if(data.presetName){$('presetName').value=data.presetName;$('presetList').value=data.presetName;}
+      if(refStats)generateLUT(+$('lutSize').value);
+      if(prevImg && lut)drawScopes($('cvPrev'));
+    }catch(err){alert('Impossible d’importer le preset : '+err.message);}
+  };
+  reader.onerror=()=>alert('Impossible de lire le fichier preset.');
+  reader.readAsText(file);
+}
+
 $('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});
 
 // ---------- Wiring ----------
@@ -712,6 +746,9 @@ function exportMatchReport(){
 }
 
 $('btnDl').addEventListener('click',download);
+$('btnExportPreset').addEventListener('click',exportPresetJSON);
+$('btnImportPreset').addEventListener('click',()=>$('presetFile').click());
+$('presetFile').addEventListener('change',e=>{if(e.target.files[0])importPresetJSON(e.target.files[0]);e.target.value='';});
 $('btnReport').addEventListener('click',exportMatchReport);
 $('btnAuto').addEventListener('click',()=>{
   if(window.CGT_AUTOMATCH && typeof window.CGT_AUTOMATCH.run==='function')window.CGT_AUTOMATCH.run({deep:true});
@@ -730,6 +767,7 @@ $('btnDel').addEventListener('click',deletePreset);
 syncLabels();refreshPresetList();
 </script>
 <script src="colormatch.js"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
