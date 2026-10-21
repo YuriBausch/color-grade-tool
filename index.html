@@ -282,9 +282,10 @@ function deltaE2000(l1,a1,b1,l2,a2,b2){
     else hm=(h1p+h2p-2*Math.PI)/2;
   }
   const T=1-0.17*Math.cos(hm-Math.PI/6)+0.24*Math.cos(2*hm)+0.32*Math.cos(3*hm+Math.PI/30)-0.20*Math.cos(4*hm-63*Math.PI/180);
-  const dTheta=30*Math.exp(-Math.pow((hm-275*Math.PI/180)/25,2));
+  const dTheta=30*Math.exp(-Math.pow((hm-275*Math.PI/180)/(25*Math.PI/180),2));
   const C7=Math.pow(Cpm,7);
-  const SC=1+0.0015*Cpm*Math.sqrt(C7/(C7+Math.pow(25,7)));
+  // Sharma et al. 2005: chroma scale factor (the validated form).
+  const SC=1+0.045*Cpm;
   const L50=(Lpm-50)*(Lpm-50);
   const SL=1+0.015*L50/Math.sqrt(20+L50);
   const SH=1+0.015*Cpm*T;
@@ -348,61 +349,58 @@ function zoneWarmth(sr,sb,count,globalB){
 function analyze(img,roi){
   const {data:d,n}=sampleImg(img,roi);
   const lum=new Float32Array(n),rC=new Float32Array(n),gC=new Float32Array(n),bC=new Float32Array(n);
-  let satSum=0;
+  let satSum=0, valid=0;
   for(let i=0;i<n;i++){
-    const r=srgb2lin(d[i*4]/255),g=srgb2lin(d[i*4+1]/255),b=srgb2lin(d[i*4+2]/255);
-    rC[i]=r;gC[i]=g;bC[i]=b;
-    lum[i]=0.2126*r+0.7152*g+0.0722*b;
+    const a=d[i*4+3], rr=d[i*4],gg=d[i*4+1],bb=d[i*4+2];
+    if(a<=0||![rr,gg,bb].every(Number.isFinite))continue;
+    const r=srgb2lin(rr/255),g=srgb2lin(gg/255),b=srgb2lin(bb/255);
+    if(![r,g,b].every(Number.isFinite))continue;
+    rC[valid]=r;gC[valid]=g;bC[valid]=b;
+    lum[valid]=0.2126*r+0.7152*g+0.0722*b;
     const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
-    satSum+=mx>1e-5?(mx-mn)/mx:0;
+    satSum+=mx>1e-5?(mx-mn)/mx:0; valid++;
   }
-  const sorted=lum.slice().sort();
-  const p=f=>sorted[clamp(Math.floor(f*(n-1)),0,n-1)];
-  const meanCh=a=>{let s=0;for(let i=0;i<n;i++)s+=a[i];return s/n;};
+  if(!valid)throw new Error('Aucun pixel valide dans la ROI');
+  const sorted=lum.slice(0,valid).sort();
+  const p=f=>sorted[clamp(Math.floor(f*(valid-1)),0,valid-1)];
+  const meanCh=a=>{let s=0;for(let i=0;i<valid;i++)s+=a[i];return s/valid;};
   const mr=meanCh(rC),mg=meanCh(gC),mb=meanCh(bC);
   let sLoR=0,sLoB=0,sHiR=0,sHiB=0,cLo=0,cHi=0;
   const tLo=p(0.35),tHi=p(0.65);
-  for(let i=0;i<n;i++){if(lum[i]<tLo){sLoR+=rC[i];sLoB+=bC[i];cLo++;}else if(lum[i]>tHi){sHiR+=rC[i];sHiB+=bC[i];cHi++;}}
+  for(let i=0;i<valid;i++){if(lum[i]<tLo){sLoR+=rC[i];sLoB+=bC[i];cLo++;}else if(lum[i]>tHi){sHiR+=rC[i];sHiB+=bC[i];cHi++;}}
   return {
     p1:p(0.01),p5:p(0.05),p25:p(0.25),p50:p(0.50),p75:p(0.75),p95:p(0.95),p99:p(0.99),
-    sat:satSum/n,
+    sat:satSum/valid,
     warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
     warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
     meanR:mr,meanG:mg,meanB:mb,
-    _pixels:d,_pn:n
+    _pixels:d,_pn:valid
   };
 }
 
 // ---------- Palette dominante (k-means, 6 couleurs) ----------
 function buildPalette(img,k,roi){
-  k=k||6;
-  const {data:d,n}=sampleImg(img,roi);
-  const pts=[];
-  for(let i=0;i<n;i+=7)pts.push([d[i*4],d[i*4+1],d[i*4+2]]);
-  let cent=[];
-  for(let c=0;c<k;c++)cent.push(pts[Math.floor(c*pts.length/k)].slice());
+  k=Math.max(1,Math.floor(k||6));
+  const {data:d,n}=sampleImg(img,roi),pts=[],seen=new Set();
+  for(let i=0;i<n;i+=7){
+    const a=d[i*4+3],r=d[i*4],g=d[i*4+1],b=d[i*4+2];
+    if(a<=0||![r,g,b].every(Number.isFinite))continue;
+    const key=r+','+g+','+b;if(seen.has(key))continue;seen.add(key);pts.push([r,g,b]);
+  }
+  if(!pts.length)throw new Error('Aucun pixel valide pour la palette');
+  k=Math.min(k,pts.length);
+  let cent=pts.slice(0,k).map(p=>p.slice());
   const assign=new Array(pts.length).fill(0);
   for(let it=0;it<10;it++){
-    for(let i=0;i<pts.length;i++){
-      let bi=0,bd=Infinity;
-      for(let c=0;c<k;c++){
-        const dr=pts[i][0]-cent[c][0],dg=pts[i][1]-cent[c][1],db=pts[i][2]-cent[c][2];
-        const dist=dr*dr+dg*dg+db*db;
-        if(dist<bd){bd=dist;bi=c;}
-      }
-      assign[i]=bi;
-    }
+    for(let i=0;i<pts.length;i++){let bi=0,bd=Infinity;for(let c=0;c<k;c++){const dr=pts[i][0]-cent[c][0],dg=pts[i][1]-cent[c][1],db=pts[i][2]-cent[c][2],dist=dr*dr+dg*dg+db*db;if(dist<bd){bd=dist;bi=c;}}assign[i]=bi;}
     const sums=cent.map(()=>[0,0,0,0]);
-    for(let i=0;i<pts.length;i++){const s=sums[assign[i]];s[0]+=pts[i][0];s[1]+=pts[i][1];s[2]+=pts[i][2];s[3]++;}
-    for(let c=0;c<k;c++)if(sums[c][3])cent[c]=[sums[c][0]/sums[c][3],sums[c][1]/sums[c][3],sums[c][2]/sums[c][3]];
+    for(let i=0;i<pts.length;i++){const q=sums[assign[i]];q[0]+=pts[i][0];q[1]+=pts[i][1];q[2]+=pts[i][2];q[3]++;}
+    for(let c=0;c<k;c++)cent[c]=sums[c][3]?sums[c].slice(0,3).map(v=>v/sums[c][3]):pts[(c+it)%pts.length].slice();
   }
-  const counts=new Array(k).fill(0);
-  for(let i=0;i<pts.length;i++)counts[assign[i]]++;
-  return cent.map((c,i)=>({
-    hex:'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join(''),
-    pct:counts[i]/pts.length*100
-  })).sort((a,b)=>b.pct-a.pct);
+  const counts=new Array(k).fill(0);for(const a of assign)counts[a]++;
+  return cent.map((c,i)=>({hex:'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join(''),pct:counts[i]/pts.length*100})).sort((a,b)=>b.pct-a.pct);
 }
+
 function showPalette(img,roi){
   const pal=buildPalette(img,6,roi);
   const el=$('palette');
@@ -637,7 +635,7 @@ function renderPrev(img){
     const R0=lutTetra(r,g,b);
     d[i]=R0[0]*255;d[i+1]=R0[1]*255;d[i+2]=R0[2]*255;
     const pix=i>>2,px=pix%cv.width,py=Math.floor(pix/cv.width);
-    if(px>=roiX0&&px<roiX1&&py>=roiY0&&py<roiY1&&(i>>2)%16===0){
+    if(px>=roiX0&&px<roiX1&&py>=roiY0&&py<roiY1&&(i>>2)%16===0&&d[i+3]>0&&[r,g,b].every(Number.isFinite)){
       const lab1=rgb2lab(srgb2lin(r),srgb2lin(g),srgb2lin(b));
       const lab2=rgb2lab(srgb2lin(R0[0]),srgb2lin(R0[1]),srgb2lin(R0[2]));
       sumDE+=deltaE2000(lab1[0],lab1[1],lab1[2],lab2[0],lab2[1],lab2[2]);
@@ -857,7 +855,6 @@ $('btnReport').addEventListener('click',exportMatchReport);
 $('btnAuto').addEventListener('click',()=>{
   if(window.CGT_AUTOMATCH && typeof window.CGT_AUTOMATCH.run==='function')window.CGT_AUTOMATCH.run({deep:true});
   else if(typeof window.CGT_AUTOMATCH==='function')window.CGT_AUTOMATCH();
-  else console.warn('colormatch.js non chargé');
 });
 $('btnReset').addEventListener('click',()=>{
   $('intensity').value=100;$('sat').value=100;$('warm').value=0;$('crush').value=50;$('con').value=100;
@@ -873,9 +870,6 @@ $('btnImportPreset').addEventListener('click',()=>$('presetFile').click());
 $('presetFile').addEventListener('change',e=>{importPresetFile(e.target.files[0]);e.target.value='';});
 loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');drawROI('prev');$('btnRoi').addEventListener('click',toggleROIMode);$('btnRoiReset').addEventListener('click',()=>{roiState={ref:null,prev:null};saveROI();drawROI('ref');drawROI('prev');roiLabel();if(refImg)refreshAnalysis();if(prevImg&&lut)renderPrev(prevImg);});roiLabel();syncLabels();refreshPresetList();
 </script>
-<script src="colormatch.js"></script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
