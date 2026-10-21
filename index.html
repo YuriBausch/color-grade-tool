@@ -444,7 +444,7 @@ function generateLUT(size){
   const reference=refStats;
   if(!reference)return;
   const n=Math.max(2,Math.round(size||17)), data=new Float32Array(n*n*n*3),
-    p={intensity:+$('intensity').value,sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,
+    p={intensity:+$('intensity').value,sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,crush:+$('crush').value,
        zSh:+$('zSh').value,zShW:+$('zShW').value,zMd:+$('zMd').value,
        zMdW:+$('zMdW').value,zHi:+$('zHi').value,zHiW:+$('zHiW').value};
   function correct(r,g,b){
@@ -462,6 +462,11 @@ function generateLUT(size){
     const ex=Math.pow(2,z*.6); R*=ex; G*=ex; B*=ex;
     const y=.2126*R+.7152*G+.0722*B;
     R=y+(R-y)*sat; G=y+(G-y)*sat; B=y+(B-y)*sat;
+    // Apply the black-density control in the same linear-light domain as the LUT.
+    // It was previously exposed and wired to regeneration, but never consumed.
+    const crush=(p.crush-50)/50;
+    if(crush>=0){R*=1-.35*crush;G*=1-.35*crush;B*=1-.35*crush;}
+    else{const lift=-crush*.25;R+= (1-R)*lift;G+=(1-G)*lift;B+=(1-B)*lift;}
     const ww=1+warm*.5+zw*.08;
     const graded=[clamp(R*ww,0,1),clamp(G,0,1),clamp(B/ww,0,1)];
     const mix=clamp(p.intensity/100,0,1);
@@ -617,8 +622,12 @@ function renderPrev(img){
   const roiX0=Math.floor(rw.x*cv.width),roiY0=Math.floor(rw.y*cv.height),roiX1=Math.ceil((rw.x+rw.w)*cv.width),roiY1=Math.ceil((rw.y+rw.h)*cv.height);
   for(let i=0;i<d.length;i+=4){
     const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
-    const R0=lutTetra(r,g,b);
-    d[i]=R0[0]*255;d[i+1]=R0[1]*255;d[i+2]=R0[2]*255;
+    // LUT generation is linear-light; convert the sRGB canvas samples in and
+    // convert the transformed result back before writing to the canvas.
+    const R0=lutTetra(srgb2lin(r),srgb2lin(g),srgb2lin(b));
+    d[i]=clamp(lin2srgb(R0[0]),0,1)*255;
+    d[i+1]=clamp(lin2srgb(R0[1]),0,1)*255;
+    d[i+2]=clamp(lin2srgb(R0[2]),0,1)*255;
     const pix=i>>2,px=pix%cv.width,py=Math.floor(pix/cv.width);
     if(px>=roiX0&&px<roiX1&&py>=roiY0&&py<roiY1&&(i>>2)%16===0&&d[i+3]>0&&[r,g,b].every(Number.isFinite)){
       const lab1=rgb2lab(srgb2lin(r),srgb2lin(g),srgb2lin(b));
