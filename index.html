@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Colour Grade Tool v3.1.2 — Ref shot vers LUT .cube pour DaVinci Resolve. Tétraédrique, score ΔE, presets. 100% local.">
-<title>Colour Grade Tool v3.1.2 — Ref Shot → LUT .cube</title>
+<meta name="description" content="Colour Grade Tool v3.2 — Ref shot vers LUT .cube pour DaVinci Resolve. Tétraédrique, score ΔE, presets, vectorscope + waveform. 100% local.">
+<title>Colour Grade Tool v3.2 — Ref Shot → LUT .cube</title>
 <style>
   :root{--bg:#0e0e10;--bg2:#131316;--panel:#1b1b1f;--panel2:#222227;--acc:#e8a33d;--acc2:#f0b95e;--txt:#eaeaea;--mut:#8a8a90;--line:#2b2b31;--radius:14px;--ok:#5ec26a;--warn:#e0b23d;--bad:#e05a4b;}
   *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
@@ -26,14 +26,6 @@
   .drop__ico{font-size:1.8rem;}
   .drop img,.drop canvas{max-width:100%;max-height:420px;display:block;}
   .drop .imgwrap{width:100%;display:flex;justify-content:center;}
-  .palette{display:none;width:100%;padding:14px 16px 16px;border-top:1px solid var(--line);background:rgba(0,0,0,.12);}
-  .palette h3{font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--acc);margin-bottom:10px;}
-  .palette__grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;}
-  .palette__swatch{min-width:0;}
-  .palette__color{height:42px;border-radius:7px;border:1px solid rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(0,0,0,.15);}
-  .palette__meta{display:flex;justify-content:space-between;gap:4px;margin-top:5px;font-size:.64rem;color:var(--mut);font-variant-numeric:tabular-nums;}
-  .palette__hex{color:var(--txt);font-weight:600;}
-  @media(max-width:520px){.palette__grid{grid-template-columns:repeat(3,1fr);}}
   .thumbtag{position:absolute;top:10px;left:10px;font-size:.65rem;background:rgba(0,0,0,.75);padding:3px 10px;border-radius:6px;letter-spacing:1.5px;text-transform:uppercase;z-index:5;border:1px solid var(--line);}
   .ba{position:relative;width:100%;user-select:none;overflow:hidden;}
   .ba img,.ba canvas{width:100%;display:block;}
@@ -70,13 +62,28 @@
   select,input[type=text]{background:var(--panel2);color:var(--txt);border:1px solid var(--line);padding:10px;border-radius:8px;font-size:.85rem;}
   input[type=text]{flex:1;min-width:140px;}
   .note{color:var(--mut);font-size:.72rem;margin-top:14px;line-height:1.6;border-top:1px solid var(--line);padding-top:12px;} .note b{color:#bbb;}
+  /* Scopes */
+  .scopes{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+  .scopes h3{font-size:.7rem;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:12px;}
+  .scopes__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+  .scope{display:flex;flex-direction:column;gap:6px;}
+  .scope canvas{width:100%;aspect-ratio:1/1;background:#101013;border:1px solid var(--line);border-radius:8px;}
+  .scope--wave canvas{aspect-ratio:16/9;}
+  .scope span{font-size:.65rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut);text-align:center;}
+  .scopes__empty{color:var(--mut);font-size:.78rem;}
+  /* Palette */
+  .palette{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .swatch{position:relative;width:64px;height:44px;border-radius:8px;border:1px solid var(--line);overflow:hidden;cursor:default;}
+  .swatch span{position:absolute;bottom:0;left:0;right:0;font-size:.58rem;text-align:center;background:rgba(0,0,0,.72);padding:2px 0;color:#fff;letter-spacing:.5px;}
+  .swatch em{position:absolute;top:0;left:0;right:0;font-size:.55rem;text-align:center;background:rgba(0,0,0,.55);padding:1px 0;color:rgba(255,255,255,.85);font-style:normal;}
+  .palette-title{font-size:.62rem;letter-spacing:1.8px;text-transform:uppercase;color:var(--mut);margin-top:14px;}
 .multi-rush-card{grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.multi-rush-card .card__title{flex-basis:100%}.file-pick{background:var(--panel2);border:1px solid var(--line);padding:9px 14px;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:700}.muted{color:var(--mut);font-size:.82rem}.weight-controls{margin:18px 0 8px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}.weight-controls h3{font-size:.72rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--acc);margin:0 0 12px}.weight-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}@media(max-width:700px){.weight-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header class="top">
   <h1>Colour <b>Grade</b> Tool</h1>
-  <span class="badge">v3.1.2</span>
+  <span class="badge">v3.2 · scopes</span>
 </header>
 <p class="sub">Charge une <b>image de référence</b> (le look visé), puis une <b>frame de tes rushes</b> pour prévisualiser le résultat avec un slider avant/après. Export en <b>LUT .cube</b> pour DaVinci Resolve. Aucune image n'est envoyée sur un serveur.</p>
 
@@ -90,7 +97,10 @@
         Glisse ici la frame de référence<br>(ou clique pour parcourir)
       </div>
       <div class="imgwrap"><img id="imgRef" style="display:none" alt="Frame de référence"></div>
-      <div class="palette" id="refPalette"><h3>Palette dominante</h3><div class="palette__grid" id="paletteGrid"></div></div>
+      <div style="width:100%;padding:0 16px 16px">
+        <div class="palette-title" id="paletteTitle" style="display:none">Palette dominante de la référence</div>
+        <div class="palette" id="palette" style="display:none"></div>
+      </div>
     </div>
   </div>
   <div class="card">
@@ -123,6 +133,15 @@
 <div class="descore" id="deBox">
   <div class="descore__num" id="deNum">—</div>
   <div class="descore__txt" id="deTxt"><b>Score de match ΔE (CIEDE2000)</b><br>Charge une référence ET une frame de rush pour mesurer la fidélité du look gradé vs la référence.</div>
+</div>
+
+<div class="scopes" id="scopesBox">
+  <h3>Scopes — contrôle de l’image gradée</h3>
+  <div class="scopes__empty" id="scopesEmpty">Charge une frame de rush pour activer le vectorscope et le waveform RGB.</div>
+  <div class="scopes__grid" id="scopesGrid" style="display:none">
+    <div class="scope"><canvas id="cvVector" width="256" height="256"></canvas><span>Vectorscope (U·V, gradé)</span></div>
+    <div class="scope scope--wave"><canvas id="cvWave" width="512" height="256"></canvas><span>Waveform RGB (gradé)</span></div>
+  </div>
 </div>
 
 <div class="stats" id="statsBox">
@@ -254,36 +273,6 @@ function updateRushCount(){
   $('rushCount').textContent=n?(n+' rush'+(n>1?'s':'')+' inclus dans le match'):'Aucun rush additionnel';
 }
 
-function renderReferencePalette(img){
-  const area=12000,aspect=img.width/img.height;
-  const W=Math.max(1,Math.round(Math.sqrt(area*aspect))),H=Math.max(1,Math.round(area/W));
-  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
-  const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,W,H);
-  const px=ctx.getImageData(0,0,W,H).data,samples=[];
-  for(let i=0;i<px.length;i+=4){if(px[i+3]<32)continue;samples.push([px[i],px[i+1],px[i+2]]);}
-  if(!samples.length)return;
-  const k=Math.min(6,samples.length),centers=[];
-  for(let i=0;i<k;i++)centers.push(samples[Math.floor((i+.5)*samples.length/k)].slice());
-  let assignments=[];
-  for(let it=0;it<6;it++){
-    const sums=centers.map(()=>[0,0,0,0]);assignments=[];
-    for(const color of samples){let best=0,dist=Infinity;
-      centers.forEach((center,j)=>{const d=(color[0]-center[0])**2+(color[1]-center[1])**2+(color[2]-center[2])**2;if(d<dist){dist=d;best=j;}});
-      assignments.push(best);const sum=sums[best];sum[0]+=color[0];sum[1]+=color[1];sum[2]+=color[2];sum[3]++;
-    }
-    centers.forEach((center,j)=>{if(sums[j][3]){center[0]=sums[j][0]/sums[j][3];center[1]=sums[j][1]/sums[j][3];center[2]=sums[j][2]/sums[j][3];}});
-  }
-  const counts=centers.map(()=>0);assignments.forEach(j=>counts[j]++);
-  const palette=centers.map((c,i)=>({c,count:counts[i]})).filter(x=>x.count).sort((a,b)=>b.count-a.count);
-  const grid=$('paletteGrid');grid.innerHTML='';
-  palette.forEach(({c,count})=>{const hex='#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('').toUpperCase();
-    const item=document.createElement('div');item.className='palette__swatch';
-    item.innerHTML='<div class="palette__color"></div><div class="palette__meta"><span class="palette__hex">'+hex+'</span><span>'+Math.round(count/samples.length*100)+'%</span></div>';
-    item.firstElementChild.style.backgroundColor=hex;grid.appendChild(item);
-  });
-  $('refPalette').style.display='block';
-}
-
 function setupDrop(dropId,cb){
   const d=$(dropId);
   d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('over');});
@@ -306,13 +295,11 @@ function sampleImg(img){
 }
 
 // ---------- Chaleur de zone bornée et conditionnée au signal ----------
-// Ratio R/B fiable uniquement si la zone contient assez de lumière et de bleu.
-// Sinon → neutre (1.0). Toujours borné [0.6, 1.6] pour éviter tout embalance extrême.
 function zoneWarmth(sr,sb,count,globalB){
   if(!count)return 1;
   const mr=sr/count, mb=sb/count;
-  if(mr+mb<0.01)return 1;                              // zone trop sombre : pas de signal chromatique fiable
-  if(mb<Math.max(0.006,globalB*0.2))return 1;          // bleu quasi absent : ratio non significatif
+  if(mr+mb<0.01)return 1;
+  if(mb<Math.max(0.006,globalB*0.2))return 1;
   return clamp(mr/mb,0.6,1.6);
 }
 
@@ -340,8 +327,46 @@ function analyze(img){
     sat:satSum/n,
     warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
     warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
-    meanR:mr,meanG:mg,meanB:mb
+    meanR:mr,meanG:mg,meanB:mb,
+    _pixels:d,_pn:n
   };
+}
+
+// ---------- Palette dominante (k-means, 6 couleurs) ----------
+function buildPalette(img,k){
+  k=k||6;
+  const {data:d,n}=sampleImg(img);
+  const pts=[];
+  for(let i=0;i<n;i+=7)pts.push([d[i*4],d[i*4+1],d[i*4+2]]);
+  let cent=[];
+  for(let c=0;c<k;c++)cent.push(pts[Math.floor(c*pts.length/k)].slice());
+  const assign=new Array(pts.length).fill(0);
+  for(let it=0;it<10;it++){
+    for(let i=0;i<pts.length;i++){
+      let bi=0,bd=Infinity;
+      for(let c=0;c<k;c++){
+        const dr=pts[i][0]-cent[c][0],dg=pts[i][1]-cent[c][1],db=pts[i][2]-cent[c][2];
+        const dist=dr*dr+dg*dg+db*db;
+        if(dist<bd){bd=dist;bi=c;}
+      }
+      assign[i]=bi;
+    }
+    const sums=cent.map(()=>[0,0,0,0]);
+    for(let i=0;i<pts.length;i++){const s=sums[assign[i]];s[0]+=pts[i][0];s[1]+=pts[i][1];s[2]+=pts[i][2];s[3]++;}
+    for(let c=0;c<k;c++)if(sums[c][3])cent[c]=[sums[c][0]/sums[c][3],sums[c][1]/sums[c][3],sums[c][2]/sums[c][3]];
+  }
+  const counts=new Array(k).fill(0);
+  for(let i=0;i<pts.length;i++)counts[assign[i]]++;
+  return cent.map((c,i)=>({
+    hex:'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join(''),
+    pct:counts[i]/pts.length*100
+  })).sort((a,b)=>b.pct-a.pct);
+}
+function showPalette(img){
+  const pal=buildPalette(img,6);
+  const el=$('palette');
+  el.innerHTML=pal.map(s=>`<div class="swatch" style="background:${s.hex}" title="${s.hex} — ${s.pct.toFixed(1)}%"><em>${s.pct.toFixed(0)}%</em><span>${s.hex}</span></div>`).join('');
+  el.style.display='flex';$('paletteTitle').style.display='block';
 }
 
 function fmt(x,d=3){return x.toFixed(d);}
@@ -403,7 +428,6 @@ function getZoneVals(){
 
 // ---------- Génération de la LUT 3D ----------
 function generateLUT(size){
-  // Single source of truth: this is the exact correction optimized by CGT_AUTOMATCH.
   const n=Math.max(2,Math.round(size||17)), data=new Float32Array(n*n*n*3),
     p={sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,
        zSh:+$('zSh').value,zShW:+$('zShW').value,zMd:+$('zMd').value,
@@ -433,41 +457,19 @@ function lutTetra(r,g,b){
   const i0=Math.min(Math.floor(x),S-2),j0=Math.min(Math.floor(y),S-2),k0=Math.min(Math.floor(z),S-2);
   const fx=x-i0,fy=y-j0,fz=z-k0;
   const idx=(i,j,k)=>(k*S*S+j*S+i)*3;
-  // Sommets du cube unité
   const c000=idx(i0,j0,k0),   c100=idx(i0+1,j0,k0),   c010=idx(i0,j0+1,k0),   c110=idx(i0+1,j0+1,k0);
   const c001=idx(i0,j0,k0+1), c101=idx(i0+1,j0,k0+1), c011=idx(i0,j0+1,k0+1),c111=idx(i0+1,j0+1,k0+1);
   let out=[0,0,0];
-  // Dispatch standard (ordre décroissant des deltas) — 6 tétraèdres
   let a=fx,b2=fy,c=fz;
   const acc=(w,v0,v1,v2)=>{out[0]+=w*v0;out[1]+=w*v1;out[2]+=w*v2;};
   if(fx>fy){
-    if(fy>fz){        // fx>fy>fz : R>G>B
-      acc(fx,D[c100],D[c100+1],D[c100+2]);
-      acc(fy,D[c110],D[c110+1],D[c110+2]);
-      acc(fz,D[c111],D[c111+1],D[c111+2]);
-    }else if(fx>fz){  // fx>fz>fy : R>B>G
-      acc(fx,D[c100],D[c100+1],D[c100+2]);
-      acc(fz,D[c101],D[c101+1],D[c101+2]);
-      acc(fy,D[c111],D[c111+1],D[c111+2]);
-    }else{            // fz>fx>fy : B>R>G
-      acc(fz,D[c001],D[c001+1],D[c001+2]);
-      acc(fx,D[c101],D[c101+1],D[c101+2]);
-      acc(fy,D[c111],D[c111+1],D[c111+2]);
-    }
+    if(fy>fz){acc(fx,D[c100],D[c100+1],D[c100+2]);acc(fy,D[c110],D[c110+1],D[c110+2]);acc(fz,D[c111],D[c111+1],D[c111+2]);}
+    else if(fx>fz){acc(fx,D[c100],D[c100+1],D[c100+2]);acc(fz,D[c101],D[c101+1],D[c101+2]);acc(fy,D[c111],D[c111+1],D[c111+2]);}
+    else{acc(fz,D[c001],D[c001+1],D[c001+2]);acc(fx,D[c101],D[c101+1],D[c101+2]);acc(fy,D[c111],D[c111+1],D[c111+2]);}
   }else{
-    if(fz>fy){        // fz>fy>fx : B>G>R
-      acc(fz,D[c001],D[c001+1],D[c001+2]);
-      acc(fy,D[c011],D[c011+1],D[c011+2]);
-      acc(fx,D[c111],D[c111+1],D[c111+2]);
-    }else if(fx>fz){  // fy>fx>fz : G>R>B
-      acc(fy,D[c010],D[c010+1],D[c010+2]);
-      acc(fx,D[c110],D[c110+1],D[c110+2]);
-      acc(fz,D[c111],D[c111+1],D[c111+2]);
-    }else{            // fy>fz>fx : G>B>R
-      acc(fy,D[c010],D[c010+1],D[c010+2]);
-      acc(fz,D[c011],D[c011+1],D[c011+2]);
-      acc(fx,D[c111],D[c111+1],D[c111+2]);
-    }
+    if(fz>fy){acc(fz,D[c001],D[c001+1],D[c001+2]);acc(fy,D[c011],D[c011+1],D[c011+2]);acc(fx,D[c111],D[c111+1],D[c111+2]);}
+    else if(fx>fz){acc(fy,D[c010],D[c010+1],D[c010+2]);acc(fx,D[c110],D[c110+1],D[c110+2]);acc(fz,D[c111],D[c111+1],D[c111+2]);}
+    else{acc(fy,D[c010],D[c010+1],D[c010+2]);acc(fz,D[c011],D[c011+1],D[c011+2]);acc(fx,D[c111],D[c111+1],D[c111+2]);}
   }
   const base=idx(i0,j0,k0);
   out[0]=(1-fx-fy-fz)*D[base]+out[0];
@@ -489,7 +491,7 @@ function showDE(de){
   let cls,txt;
   if(de<2){cls='descore--ok';txt='<b>ΔE '+fmt(de,1)+' — Excellent match 🟢</b><br>Le look gradé est quasi imperceptiblement différent de la référence. Tu peux exporter la LUT en confiance.';}
   else if(de<5){cls='descore--warn';txt='<b>ΔE '+fmt(de,1)+' — Bon match 🟡</b><br>Différences légères visibles côte à côte. Ajuste saturation / chaleur / zones pour affiner.';}
-  else{cls='descore--bad';txt='<b>ΔE '+fmt(de,1)+' — Match approximatif 🔴</b><br>Le look s\'écarte nettement de la référence. Vérifie que la frame de rush est comparable à la référence (exposition, contenu). Le ΔE mesure la ressemblance globale moyenne — deux images de contenu différent peuvent afficher un ΔE élevé sans que le look soit faux.';}
+  else{cls='descore--bad';txt='<b>ΔE '+fmt(de,1)+' — Match approximatif 🔴</b><br>Le look s\'écarte nettement de la référence. Vérifie que la frame de rush est comparable à la référence (exposition, contenu).';}
   box.classList.add(cls);
   $('deNum').textContent=fmt(de,1);
   $('deTxt').innerHTML=txt;
@@ -508,6 +510,55 @@ function syncLabels(){
     $('vZ'+z).textContent=(+$('z'+z).value/100).toFixed(2);
     $('vZ'+z+'W').textContent=$('z'+z+'W').value;
   });
+}
+
+// ---------- Scopes : vectorscope + waveform RGB ----------
+function drawScopes(d){
+  const W=128,H=128; // échantillonnage réduit pour la perf
+  const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;
+  const tctx=tmp.getContext('2d',{willReadFrequently:true});
+  tctx.drawImage(d,0,0,W,H);
+  const px=tctx.getImageData(0,0,W,H).data;
+
+  // --- Vectorscope (U/V sur grille Rec.709) ---
+  const cv=$('cvVector'),ctx=cv.getContext('2d');
+  const S=cv.width,cx=S/2,cy=S/2,rad=S/2-8;
+  ctx.fillStyle='#101013';ctx.fillRect(0,0,S,S);
+  ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(cx,cy,rad,0,2*Math.PI);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx-rad,cy);ctx.lineTo(cx+rad,cy);ctx.moveTo(cx,cy-rad);ctx.lineTo(cx,cy+rad);ctx.stroke();
+  // cible skin-tone (ligne I)
+  ctx.strokeStyle='rgba(94,194,106,.45)';
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+rad*Math.cos(123*Math.PI/180),cy-rad*Math.sin(123*Math.PI/180));ctx.stroke();
+  const img=ctx.getImageData(0,0,S,S),dd=img.data;
+  for(let i=0;i<px.length;i+=16){
+    const r=px[i]/255,g=px[i+1]/255,b=px[i+2]/255;
+    const u=-0.147*r-0.289*g+0.436*b, v=0.615*r-0.515*g-0.100*b;
+    const x=Math.round(cx+u*rad*2.1), y=Math.round(cy-v*rad*2.1);
+    if(x<0||x>=S||y<0||y>=S)continue;
+    const o=(y*S+x)*4;
+    dd[o]=Math.min(255,dd[o]+160);dd[o+1]=Math.min(255,dd[o+1]+150);dd[o+2]=Math.min(255,dd[o+2]+120);dd[o+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+
+  // --- Waveform RGB ---
+  const cw=$('cvWave'),wc=cw.getContext('2d');
+  const WS=cw.width,HS=cw.height;
+  wc.fillStyle='#101013';wc.fillRect(0,0,WS,HS);
+  wc.strokeStyle='rgba(255,255,255,.1)';
+  for(let q=1;q<4;q++){wc.beginPath();wc.moveTo(0,HS*q/4);wc.lineTo(WS,HS*q/4);wc.stroke();}
+  const wimg=wc.getImageData(0,0,WS,HS),wd=wimg.data;
+  const colOff=[0,1,2];
+  for(let i=0;i<px.length;i+=4){
+    const x=Math.round((i/4)%W)/W*WS;
+    for(let c=0;c<3;c++){
+      const y=Math.round(HS-1-clamp(px[i+c],0,255)/255*(HS-1));
+      const o=(y*WS+x)*4+colOff[c];
+      wd[o]=Math.min(255,wd[o]+170);wd[o+3]=255;
+    }
+  }
+  wc.putImageData(wimg,0,0);
+  $('scopesEmpty').style.display='none';$('scopesGrid').style.display='grid';
 }
 
 // ---------- Rendu de la prévisualisation ----------
@@ -537,6 +588,7 @@ function renderPrev(img){
   }
   ctx.putImageData(id,0,0);
   if(deCount)showDE(sumDE/deCount);
+  drawScopes(img); // scopes sur l'image gradée
 }
 
 // Slider avant/après
@@ -556,7 +608,7 @@ function renderPrev(img){
 function download(){
   if(!lut)return;
   const S=lut.size;
-  let out='# Created with Colour Grade Tool v3.1.2\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
+  let out='# Created with Colour Grade Tool v3.2\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
   const D=lut.data;
   for(let i=0;i<D.length;i+=3){
     out+=D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6)+'\n';
@@ -602,7 +654,7 @@ $('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.targ
 setupDrop('dropRef',img=>{
   refStats=analyze(img);
   showStats(refStats);
-  renderReferencePalette(img);
+  showPalette(img);
   const ir=$('imgRef');
   ir.src=img.src;ir.style.display='block';
   $('ringRef').style.display='none';
@@ -612,7 +664,6 @@ setupDrop('dropRef',img=>{
 setupDrop('dropPrev',img=>{
   prevImg=img;
   if(!lut){
-    // LUT pas encore générée : afficher l'image en attendant la référence
     $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
     $('baBefore').src=img.src;
     const cv=$('cvPrev');cv.width=img.width;cv.height=img.height;
@@ -643,8 +694,5 @@ $('btnDel').addEventListener('click',deletePreset);
 syncLabels();refreshPresetList();
 </script>
 <script src="colormatch.js"></script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
