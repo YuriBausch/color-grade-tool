@@ -33,6 +33,16 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
 @media(max-width:860px){.grid{grid-template-columns:1fr}.zgrid{grid-template-columns:1fr;gap:5px}.weight-grid{grid-template-columns:1fr}.descore{align-items:flex-start}.descore__num{min-width:82px}.look-slots__grid{grid-template-columns:1fr}}
 @media(max-width:520px){body{padding:24px 13px 45px}.top{align-items:flex-start;flex-direction:column;gap:8px}.card__head{align-items:flex-start;flex-direction:column;gap:5px}.row button,.row select{flex:1}.descore{gap:10px;padding:13px}.descore__num{font-size:1.65rem;min-width:70px}.drop,.ba__empty{min-height:270px}}
 </style>
+
+<style>
+:root{--accent:#b8d8d0;--accent-strong:#d5eee7;--accent-ink:#12201e;--ok:#8fcca8;--warn:#d2b77b;--bad:#d78982;--focus-glow:0 0 0 3px rgba(184,216,208,.12)}
+body{max-width:1500px;padding-top:28px;background:radial-gradient(circle at 78% 0%,rgba(116,145,143,.09),transparent 34%),linear-gradient(180deg,#151b20 0,#101317 360px);font-size:15px}
+.top{max-width:none;margin-bottom:4px}.top h1{font-size:1.8rem}.top h1 b{color:var(--accent)}p.sub{max-width:860px;margin-bottom:22px;font-size:.92rem}
+.beginner-bar{position:relative;margin:0 0 20px;padding:24px 26px 20px;background:linear-gradient(135deg,rgba(31,43,46,.98),rgba(23,29,34,.98));border:1px solid #405158;border-radius:14px;box-shadow:0 18px 45px rgba(0,0,0,.25);overflow:hidden}.beginner-bar:after{content:"";position:absolute;right:-100px;top:-140px;width:360px;height:360px;border:1px solid rgba(184,216,208,.12);border-radius:50%;box-shadow:0 0 0 22px rgba(184,216,208,.025),0 0 0 44px rgba(184,216,208,.018);pointer-events:none}.beginner-bar__intro{max-width:680px}.eyebrow{color:var(--accent);font-size:.63rem;letter-spacing:.18em;font-weight:800}.beginner-bar h2{margin:6px 0 4px;font-size:1.65rem;letter-spacing:-.035em}.beginner-bar p{color:var(--muted);font-size:.88rem;max-width:640px}.mode-switch{position:absolute;top:22px;right:25px;z-index:2;display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--line-strong);border-radius:99px;background:rgba(10,14,16,.55)}.mode-switch__input{position:absolute;opacity:0;pointer-events:none}.mode-switch__copy{display:flex;flex-direction:column;line-height:1.05;color:var(--accent)}.mode-switch__copy b{font-size:.7rem}.mode-switch__copy small{margin-top:3px;color:var(--muted);font-size:.58rem}.mode-switch__copy--expert{color:var(--muted)}.mode-switch__toggle{width:39px;height:21px;border-radius:99px;background:#334047;border:1px solid #56646b;cursor:pointer}.mode-switch__toggle span{display:block;width:15px;height:15px;margin:2px;border-radius:50%;background:var(--accent);transition:transform .2s ease}.mode-switch__input:checked~.mode-switch__toggle span{transform:translateX(18px)}.mode-switch__input:checked~.mode-switch__copy{color:var(--muted)}.mode-switch__input:checked~.mode-switch__copy--expert{color:var(--accent)}
+.simple-actions{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 19px;position:relative;z-index:1}.simple-preset{display:flex;align-items:center;gap:10px;min-height:62px;padding:11px 15px;border:1px solid #3a484f;border-radius:9px;background:#20292e;color:var(--text);text-align:left;box-shadow:none}.simple-preset:hover{border-color:var(--accent);background:#29363a;transform:translateY(-1px)}.simple-preset--primary{border-color:#718f8b;background:var(--accent);color:var(--accent-ink)}.simple-preset--primary:hover{background:var(--accent-strong)}.simple-preset--quiet{margin-left:auto;background:transparent}.simple-preset__icon{font-size:1.22rem;color:var(--accent)}.simple-preset--primary .simple-preset__icon{color:var(--accent-ink)}.simple-preset b,.simple-preset small{display:block}.simple-preset b{font-size:.83rem}.simple-preset small{margin-top:3px;color:var(--muted);font-size:.64rem;font-weight:500}.simple-preset--primary small{color:#3e5551}.steps{display:flex;align-items:center;gap:10px;padding-top:16px;border-top:1px solid rgba(184,216,208,.13);position:relative;z-index:1}.step{display:grid;grid-template-columns:29px 1fr;column-gap:8px;align-items:center;min-width:185px}.step>span{grid-row:span 2;display:grid;place-items:center;width:27px;height:27px;border:1px solid var(--accent);border-radius:50%;color:var(--accent);font-size:.75rem;font-weight:800}.step b{font-size:.73rem}.step small{color:var(--muted);font-size:.63rem}.steps i{flex:1;height:1px;background:#425157;max-width:95px}
+.grid{gap:20px;margin-bottom:20px}.card,.controls,.scopes,.stats,.descore{border-radius:12px}.card__head{padding:15px 18px}.card__title,.scopes h3,.stats h3,.weight-controls h3,.look-slots__head h3{letter-spacing:.08em;font-size:.7rem}.drop{min-height:365px}.drop__ring{min-height:248px;border-radius:10px}body:not(.expert-mode) .expert-only{display:none!important}.expert-mode .expert-only{display:block!important}.expert-mode .multi-rush-card{display:flex!important}.expert-mode .stats{display:block!important}.expert-mode .controls{display:block!important}.expert-mode .roi-toolbar{display:flex!important}.help-dot{display:inline-grid;place-items:center;width:16px;height:16px;margin-left:4px;border:1px solid currentColor;border-radius:50%;font-size:.6rem;letter-spacing:0;color:var(--muted);cursor:help;vertical-align:1px}.descore{padding:18px 21px;margin-bottom:20px;min-height:86px}.descore__num{font-size:2.25rem}.descore__txt{font-size:.85rem}.controls{padding:22px}.ctl label{font-size:.84rem}.controls>.ctl{padding:4px 0}.simple-actions button{font-family:inherit}
+@media(max-width:900px){.mode-switch{position:relative;top:auto;right:auto;margin-top:18px;width:max-content}.simple-preset--quiet{margin-left:0}.steps{flex-wrap:wrap}.steps i{display:none}}@media(max-width:560px){body{padding:20px 12px 45px}.beginner-bar{padding:18px 15px}.beginner-bar h2{font-size:1.35rem}.simple-actions{display:grid;grid-template-columns:1fr 1fr}.simple-preset{width:100%;min-height:58px}.simple-preset--quiet{grid-column:1/-1}.step{min-width:100%}.drop{min-height:290px}}
+</style>
 </head>
 <body>
 <header class="top">
@@ -41,9 +51,36 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
 </header>
 <p class="sub">Charge une <b>image de référence</b> (le look visé), puis une <b>frame de tes rushes</b> pour prévisualiser le résultat avec un slider avant/après. Export en <b>LUT .cube</b> pour DaVinci Resolve. Aucune image n'est envoyée sur un serveur.</p>
 
+
+<section class="beginner-bar" aria-label="Parcours guidé">
+  <div class="beginner-bar__intro">
+    <div class="eyebrow">PARCOURS GUIDÉ · 3 ÉTAPES</div>
+    <h2>Votre look, simplement.</h2>
+    <p>Chargez deux images, choisissez une intention, puis exportez votre LUT quand le résultat vous convient.</p>
+  </div>
+  <div class="mode-switch">
+    <input class="mode-switch__input" type="checkbox" aria-label="Activer le mode expert">
+    <span class="mode-switch__copy"><b>Mode simple</b><small>Les réglages essentiels</small></span>
+    <label class="mode-switch__toggle" aria-label="Basculer en mode expert"><span></span></label>
+    <span class="mode-switch__copy mode-switch__copy--expert"><b>Mode expert</b><small>Tous les réglages</small></span>
+  </div>
+  <div class="simple-actions" aria-label="Presets rapides">
+    <button class="simple-preset simple-preset--primary" type="button" data-simple-action="auto"><span class="simple-preset__icon">✦</span><span><b>Match auto</b><small>Le meilleur point de départ</small></span></button>
+    <button class="simple-preset" type="button" data-simple-action="warm"><span class="simple-preset__icon">☀</span><span><b>Chaud</b><small>Une image plus dorée</small></span></button>
+    <button class="simple-preset" type="button" data-simple-action="cool"><span class="simple-preset__icon">◌</span><span><b>Froid</b><small>Une ambiance plus bleutée</small></span></button>
+    <button class="simple-preset" type="button" data-simple-action="cinema"><span class="simple-preset__icon">▰</span><span><b>Contraste cinéma</b><small>Des noirs plus présents</small></span></button>
+    <button class="simple-preset simple-preset--quiet" type="button" data-simple-action="reset"><span><b>Réinitialiser</b><small>Revenir au neutre</small></span></button>
+  </div>
+  <div class="steps" aria-label="Étapes">
+    <div class="step"><span>1</span><b>Charger la référence</b><small>Le look à reproduire</small></div>
+    <i></i><div class="step"><span>2</span><b>Charger le rush</b><small>Une image comparable</small></div>
+    <i></i><div class="step"><span>3</span><b>Appliquer</b><small>Match auto ou preset</small></div>
+  </div>
+</section>
+
 <div class="grid">
   <div class="card">
-    <div class="card__head"><span class="card__title">① Image de référence — look visé</span><span class="card__hint">glisser-déposer ou cliquer</span></div>
+    <div class="card__head"><span class="card__title">① Image de référence — look visé <span class="help-dot" title="Choisissez une image dont les couleurs et la lumière vous plaisent.">?</span></span><span class="card__hint">glisser-déposer ou cliquer</span></div>
     <div class="drop" id="dropRef">
       <span class="thumbtag" style="display:none" id="tagRef">Référence chargée</span>
       <div class="drop__ring" id="ringRef">
@@ -58,7 +95,7 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
     </div>
   </div>
   <div class="card">
-    <div class="card__head"><span class="card__title">② Prévisualisation — avant / après</span><span class="card__hint">glisse la poignée ⇔</span></div>
+    <div class="card__head"><span class="card__title">② Prévisualisation — avant / après <span class="help-dot" title="Comparez l’image originale et le résultat corrigé avec la poignée.">?</span></span><span class="card__hint">glisse la poignée ⇔</span></div>
     <div class="drop" id="dropPrev">
       <span class="thumbtag" style="display:none" id="tagPrev">Rush chargé</span>
       <div class="ba" id="baPrev" style="display:none"><div class="roi-overlay" id="roiOverlayPrev" aria-label="Zone de match"></div>
@@ -76,7 +113,7 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
   </div>
 </div>
 
-<div class="card multi-rush-card">
+<div class="card multi-rush-card expert-only">
   <div class="card__title">Match multi-rushs</div>
   <p class="sub" style="margin:8px 0 12px">Ajoute plusieurs frames pour optimiser le match sur l’ensemble des rushs.</p>
   <label class="file-pick" for="rushFiles">＋ Ajouter des rushs</label>
@@ -84,7 +121,7 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
   <span id="rushCount" class="muted">Aucun rush additionnel</span>
 </div>
 
-<div class="roi-toolbar" id="roiToolbar">
+<div class="roi-toolbar expert-only" id="roiToolbar">
   <button id="btnRoi" class="sec" type="button">🎯 Zone de match</button>
   <button id="btnRoiReset" class="sec" type="button">Zone = image entière</button>
   <span id="roiStatus" class="muted">Mode inactif · ROI image entière</span>
@@ -92,11 +129,11 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
 
 <div class="descore" id="deBox">
   <div class="descore__num" id="deNum">—</div>
-  <div class="descore__txt" id="deTxt"><b>Score de match ΔE (CIEDE2000)</b><br>Charge une référence ET une frame de rush pour mesurer la fidélité du look gradé vs la référence.</div>
+  <div class="descore__txt" id="deTxt"><b>Qualité du match <span class="help-dot" title="Plus le score est bas, plus les couleurs sont proches de la référence.">?</span></b><br>Charge une référence ET une frame de rush pour mesurer la fidélité du look gradé vs la référence.</div>
 </div>
 
-<div class="scopes" id="scopesBox">
-  <h3>Scopes — contrôle de l’image gradée</h3>
+<div class="scopes expert-only" id="scopesBox">
+  <h3>Scopes — vérifier la lumière et les couleurs</h3>
   <div class="scopes__empty" id="scopesEmpty">Charge une frame de rush pour activer le vectorscope et le waveform RGB.</div>
   <div class="scopes__grid" id="scopesGrid" style="display:none">
     <div class="scope"><canvas id="cvVector" width="256" height="256"></canvas><span>Vectorscope (U·V, gradé)</span></div>
@@ -104,50 +141,50 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
   </div>
 </div>
 
-<div class="stats" id="statsBox">
-  <h3>Analyse de la référence (espace linéaire, Rec.709)</h3>
+<div class="stats expert-only" id="statsBox">
+  <h3>Analyse détaillée de la référence</h3>
   <div class="statgrid" id="statsBody"></div>
 </div>
 
-<div class="controls">
-  <div class="ctl"><label>Intensité du look <span id="vInt">100%</span></label><input type="range" id="intensity" min="0" max="100" value="100"></div>
-  <div class="ctl"><label>Saturation <span id="vSat">auto</span></label><input type="range" id="sat" min="0" max="200" value="100"></div>
-  <div class="ctl"><label>Chaleur (R/B) <span id="vWarm">auto</span></label><input type="range" id="warm" min="-100" max="100" value="0"></div>
-  <div class="ctl"><label>Crush des noirs <span id="vCrush">auto</span></label><input type="range" id="crush" min="0" max="100" value="50"></div>
-  <div class="ctl"><label>Contraste <span id="vCon">auto</span></label><input type="range" id="con" min="50" max="150" value="100"></div>
+<div class="controls expert-only">
+  <div class="ctl"><label>Intensité de la correction <span id="vInt">100%</span></label><input type="range" id="intensity" min="0" max="100" value="100"></div>
+  <div class="ctl"><label>Couleurs plus ou moins vives <span id="vSat">auto</span></label><input type="range" id="sat" min="0" max="200" value="100"></div>
+  <div class="ctl"><label>Balance des couleurs <span id="vWarm">auto</span></label><input type="range" id="warm" min="-100" max="100" value="0"></div>
+  <div class="ctl"><label>Densité des noirs <span id="vCrush">auto</span></label><input type="range" id="crush" min="0" max="100" value="50"></div>
+  <div class="ctl"><label>Contraste global <span id="vCon">auto</span></label><input type="range" id="con" min="50" max="150" value="100"></div>
 
   <div class="weight-controls" aria-labelledby="weightTitle">
-    <h3 id="weightTitle">Importance des zones pour l’auto-match</h3>
+    <h3 id="weightTitle">Ce qui compte le plus pour le match auto</h3>
     <div class="weight-grid">
-      <div class="ctl"><label>Tons chair <span id="vWskin">3.5</span></label><input type="range" id="wSkin" min="0" max="5" step="0.1" value="3.5"></div>
-      <div class="ctl"><label>Zones détaillées <span id="vWdetail">1.6</span></label><input type="range" id="wDetail" min="0" max="5" step="0.1" value="1.6"></div>
-      <div class="ctl"><label>Extrêmes <span id="vWextreme">0.35</span></label><input type="range" id="wExtreme" min="0" max="5" step="0.05" value="0.35"></div>
+      <div class="ctl"><label>Visages / tons chair <span id="vWskin">3.5</span></label><input type="range" id="wSkin" min="0" max="5" step="0.1" value="3.5"></div>
+      <div class="ctl"><label>Textures et détails <span id="vWdetail">1.6</span></label><input type="range" id="wDetail" min="0" max="5" step="0.1" value="1.6"></div>
+      <div class="ctl"><label>Noirs et blancs extrêmes <span id="vWextreme">0.35</span></label><input type="range" id="wExtreme" min="0" max="5" step="0.05" value="0.35"></div>
     </div>
   </div>
 
   <div class="zgrid">
     <div>
       <h4>Ombres</h4>
-      <div class="ctl"><label>Exposition <span id="vZSh">0.00</span></label><input type="range" id="zSh" min="-100" max="100" value="0"></div>
-      <div class="ctl"><label>Chaleur <span id="vZShW">0</span></label><input type="range" id="zShW" min="-100" max="100" value="0"></div>
+      <div class="ctl"><label>Luminosité <span id="vZSh">0.00</span></label><input type="range" id="zSh" min="-100" max="100" value="0"></div>
+      <div class="ctl"><label>Balance des couleurs <span id="vZShW">0</span></label><input type="range" id="zShW" min="-100" max="100" value="0"></div>
     </div>
     <div>
-      <h4>Mid-tones</h4>
-      <div class="ctl"><label>Exposition <span id="vZMd">0.00</span></label><input type="range" id="zMd" min="-100" max="100" value="0"></div>
-      <div class="ctl"><label>Chaleur <span id="vZMdW">0</span></label><input type="range" id="zMdW" min="-100" max="100" value="0"></div>
+      <h4>Tons moyens</h4>
+      <div class="ctl"><label>Luminosité <span id="vZMd">0.00</span></label><input type="range" id="zMd" min="-100" max="100" value="0"></div>
+      <div class="ctl"><label>Balance des couleurs <span id="vZMdW">0</span></label><input type="range" id="zMdW" min="-100" max="100" value="0"></div>
     </div>
     <div>
-      <h4>Hautes lumières</h4>
-      <div class="ctl"><label>Exposition <span id="vZHi">0.00</span></label><input type="range" id="zHi" min="-100" max="100" value="0"></div>
-      <div class="ctl"><label>Chaleur <span id="vZHiW">0</span></label><input type="range" id="zHiW" min="-100" max="100" value="0"></div>
+      <h4>Lumières</h4>
+      <div class="ctl"><label>Luminosité <span id="vZHi">0.00</span></label><input type="range" id="zHi" min="-100" max="100" value="0"></div>
+      <div class="ctl"><label>Balance des couleurs <span id="vZHiW">0</span></label><input type="range" id="zHiW" min="-100" max="100" value="0"></div>
     </div>
   </div>
 
   <div class="row">
     <button id="btnDl">⬇ Exporter la LUT .cube</button>
-    <button id="btnReport" class="sec">📄 Rapport de match</button>
+    <button id="btnReport" class="sec">📄 Voir le rapport de match</button>
     <button id="btnAuto" class="sec">🎯 Match auto</button>
-    <button id="btnReset" class="sec">↺ Reset</button>
+    <button id="btnReset" class="sec">↺ Réinitialiser</button>
     <select id="lutSize">
       <option value="33" selected>LUT 33³ (rapide)</option>
       <option value="65">LUT 65³ (précise)</option>
@@ -166,7 +203,7 @@ button,select,input[type=text]{font:inherit}button{padding:9px 14px;border:1px s
     <input id="presetFile" type="file" accept="application/json,.json" hidden>
   </div>
   <div class="look-slots" aria-labelledby="lookSlotsTitle">
-    <div class="look-slots__head"><h3 id="lookSlotsTitle">Looks A / B / C</h3><span class="look-slots__active">Actif : <strong id="activeLookSlot">—</strong></span></div>
+    <div class="look-slots__head"><h3 id="lookSlotsTitle">Variantes enregistrées A / B / C</h3><span class="look-slots__active">Actif : <strong id="activeLookSlot">—</strong></span></div>
     <div class="look-slots__grid">
       <div class="look-slot" id="lookSlotA"><span class="look-slot__name">Slot A</span><button class="sec" id="saveLookA" type="button">💾 → A</button><button class="sec" id="loadLookA" type="button">A → écran</button></div>
       <div class="look-slot" id="lookSlotB"><span class="look-slot__name">Slot B</span><button class="sec" id="saveLookB" type="button">💾 → B</button><button class="sec" id="loadLookB" type="button">B → écran</button></div>
@@ -407,7 +444,14 @@ function generateLUT(size){
        zSh:+$('zSh').value,zShW:+$('zShW').value,zMd:+$('zMd').value,
        zMdW:+$('zMdW').value,zHi:+$('zHi').value,zHiW:+$('zHiW').value};
   function correct(r,g,b){
-    const sat=p.sat/100, con=p.con/100, warm=p.warm/100, lum=.2126*r+.7152*g+.0722*b;
+    // The reference analysis is the source of the automatic look. Previously this
+    // function only read UI controls, so changing the reference could not change
+    // the generated LUT. Keep manual controls additive so presets still work.
+    const rs=refStats||{meanR:.18,meanG:.18,meanB:.18,p50:.18,p5:.02,p95:.75,sat:.5};
+    const refWarm=clamp((rs.meanR-rs.meanB)*1.5,-.25,.25);
+    const refContrast=clamp((rs.p95-rs.p5)/.73,.65,1.35);
+    const refSat=clamp(rs.sat/.5,.65,1.35);
+    const sat=clamp((p.sat/100)*refSat,.05,2.5), con=clamp((p.con/100)*refContrast,.25,2.5), warm=p.warm/100+refWarm, lum=.2126*r+.7152*g+.0722*b;
     let R=(r-.5)*con+.5,G=(g-.5)*con+.5,B=(b-.5)*con+.5;
     const z=lum<.33?p.zSh/100:lum>.66?p.zHi/100:p.zMd/100;
     const zw=lum<.33?p.zShW/100:lum>.66?p.zHiW/100:p.zMdW/100;
@@ -788,8 +832,17 @@ function exportMatchReport(){
 $('btnDl').addEventListener('click',download);
 $('btnReport').addEventListener('click',exportMatchReport);
 $('btnAuto').addEventListener('click',()=>{
-  if(window.CGT_AUTOMATCH && typeof window.CGT_AUTOMATCH.run==='function')window.CGT_AUTOMATCH.run({deep:true});
-  else if(typeof window.CGT_AUTOMATCH==='function')window.CGT_AUTOMATCH();
+  // Guided Match auto is local and deterministic: derive a starting point from
+  // the loaded reference, then regenerate the LUT. The old CGT_AUTOMATCH hook
+  // was never defined in this document, making the button a no-op.
+  if(!refStats){alert('Charge une référence avant le match auto.');return;}
+  const range=Math.max(0.001,refStats.p95-refStats.p5);
+  $('warm').value=Math.round(clamp((refStats.meanR-refStats.meanB)*150,-100,100));
+  $('con').value=Math.round(clamp(100*range/.73,50,150));
+  $('sat').value=Math.round(clamp(100*(refStats.sat/.5),0,200));
+  $('crush').value=Math.round(clamp(50*(1-refStats.p1/.08),0,100));
+  syncLabels();
+  generateLUT(+$('lutSize').value);
 });
 $('btnReset').addEventListener('click',()=>{
   $('intensity').value=100;$('sat').value=100;$('warm').value=0;$('crush').value=50;$('con').value=100;
@@ -804,6 +857,22 @@ $('btnExportPreset').addEventListener('click',exportPreset);
 $('btnImportPreset').addEventListener('click',()=>$('presetFile').click());
 $('presetFile').addEventListener('change',e=>{importPresetFile(e.target.files[0]);e.target.value='';});
 loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');drawROI('prev');$('btnRoi').addEventListener('click',toggleROIMode);$('btnRoiReset').addEventListener('click',()=>{roiState={ref:null,prev:null};saveROI();drawROI('ref');drawROI('prev');roiLabel();if(refImg)refreshAnalysis();if(prevImg&&lut)renderPrev(prevImg);});roiLabel();syncLabels();refreshPresetList();
+</script>
+<script>
+(function(){
+  const fire=id=>{const el=document.getElementById(id);if(el)el.click();};
+  const set=(id,v)=>{const el=document.getElementById(id);if(el){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));}};
+  document.querySelectorAll('[data-simple-action]').forEach(btn=>btn.addEventListener('click',function(){
+    const a=this.dataset.simpleAction;
+    if(a==='auto'){fire('btnAuto');return;}
+    if(a==='reset'){fire('btnReset');return;}
+    if(a==='warm'){set('sat',108);set('warm',28);set('con',104);return;}
+    if(a==='cool'){set('sat',104);set('warm',-28);set('con',102);return;}
+    if(a==='cinema'){set('sat',104);set('crush',67);set('con',116);return;}
+  }));
+  const toggle=document.querySelector('.mode-switch__input');
+  if(toggle)toggle.addEventListener('change',()=>document.body.classList.toggle('expert-mode',toggle.checked));
+})();
 </script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
