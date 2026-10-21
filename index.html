@@ -185,6 +185,7 @@
 
   <div class="row">
     <button id="btnDl">⬇ Exporter la LUT .cube</button>
+    <button id="btnReport" class="sec">📄 Rapport de match</button>
     <button id="btnAuto" class="sec">🎯 Match auto</button>
     <button id="btnReset" class="sec">↺ Reset</button>
     <select id="lutSize">
@@ -676,7 +677,42 @@ setupDrop('dropPrev',img=>{
   $(id).addEventListener('input',()=>{syncLabels();if(refStats)generateLUT(+$('lutSize').value);});
 });
 $('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});
+// ---------- Rapport de match PNG ----------
+function exportMatchReport(){
+  const ref=$('imgRef'), graded=$('cvPrev');
+  if(!ref.naturalWidth || !graded.width){
+    alert('Charge une référence et une frame de rush avant d’exporter le rapport.');
+    return;
+  }
+  const W=1400,H=980, pad=52, gap=28, panelW=(W-pad*2-gap)/2, panelH=510;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const c=cv.getContext('2d');
+  c.fillStyle='#111115';c.fillRect(0,0,W,H);
+  c.fillStyle='#f4f1ea';c.font='700 34px system-ui';c.fillText('Colour Grade Tool — Rapport de match',pad,58);
+  c.fillStyle='#aaa6a0';c.font='16px system-ui';c.fillText(new Date().toLocaleString('fr-FR'),pad,86);
+  const contain=(image,x,y,w,h)=>{
+    const iw=image.naturalWidth||image.width, ih=image.naturalHeight||image.height;
+    const scale=Math.min(w/iw,h/ih), dw=iw*scale, dh=ih*scale;
+    c.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+  };
+  c.fillStyle='#222228';c.fillRect(pad,112,panelW,panelH);c.fillRect(pad+panelW+gap,112,panelW,panelH);
+  contain(ref,pad,112,panelW,panelH);contain(graded,pad+panelW+gap,112,panelW,panelH);
+  c.fillStyle='#fff';c.font='700 20px system-ui';c.fillText('RÉFÉRENCE',pad+18,145);c.fillText('RUSH GRADÉ',pad+panelW+gap+18,145);
+  c.fillStyle='#f4f1ea';c.font='700 24px system-ui';c.fillText('Score ΔE CIEDE2000 : '+($('deNum').textContent||'—'),pad,682);
+  c.fillStyle='#bdb9b2';c.font='16px system-ui';
+  const interpretation=$('deTxt').innerText.replace(/\n+/g,' ');c.fillText(interpretation.slice(0,112),pad,712);c.fillText(interpretation.slice(112,224),pad,737);
+  const settings=['Intensité '+$('intensity').value+'%','Saturation '+$('sat').value+'%','Chaleur '+$('warm').value,'Crush '+$('crush').value,'Contraste '+$('con').value+'%','LUT '+$('lutSize').value+'³','Preset '+($('presetList').value||'—')];
+  c.fillStyle='#f4f1ea';c.font='700 18px system-ui';c.fillText('Réglages actuels',pad,787);
+  c.fillStyle='#bdb9b2';c.font='16px system-ui';c.fillText(settings.join('  ·  '),pad,814);
+  c.fillStyle='#f4f1ea';c.font='700 18px system-ui';c.fillText('Palette dominante',pad,864);
+  c.font='16px system-ui';c.fillStyle='#bdb9b2';
+  const palette=[...document.querySelectorAll('#palette .swatch')].map(x=>x.title).filter(Boolean).join('  ·  ');
+  c.fillText(palette||'—',pad,891);
+  cv.toBlob(blob=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rapport-match-'+Date.now()+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);},'image/png');
+}
+
 $('btnDl').addEventListener('click',download);
+$('btnReport').addEventListener('click',exportMatchReport);
 $('btnAuto').addEventListener('click',()=>{
   if(window.CGT_AUTOMATCH && typeof window.CGT_AUTOMATCH.run==='function')window.CGT_AUTOMATCH.run({deep:true});
   else if(typeof window.CGT_AUTOMATCH==='function')window.CGT_AUTOMATCH();
@@ -694,5 +730,6 @@ $('btnDel').addEventListener('click',deletePreset);
 syncLabels();refreshPresetList();
 </script>
 <script src="colormatch.js"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
