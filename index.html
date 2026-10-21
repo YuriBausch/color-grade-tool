@@ -25,13 +25,12 @@
 <div class="control"><label for="gamma">Gamma <output id="gammaOut">1.00</output></label><input id="gamma" type="range" min=".5" max="2" step=".01" value="1"></div>
 <div class="control"><label for="gain">Gain <output id="gainOut">1.00</output></label><input id="gain" type="range" min=".5" max="1.5" step=".01" value="1"></div>
 </div><div class="actions"><button class="btn primary" id="autoMatch">Auto-match référence</button><div class="presets"><button class="btn preset" data-preset="neutral">Neutre</button><button class="btn preset" data-preset="warm">Chaud</button><button class="btn preset" data-preset="teal">Teal doux</button><button class="btn preset" data-preset="fade">Mat doux</button></div></div><div class="notice" id="status" aria-live="polite"></div></section>
-<section class="card export"><div><h2>5 · Export</h2><div class="status">Le PNG reprend le rendu « Après » de l'image active.</div></div><div class="actions"><button class="btn" id="downloadPng">Télécharger PNG</button><button class="btn primary" id="exportLut">Exporter LUT .cube</button></div></section>
+<section class="card export"><div><h2>6 · Export</h2><div class="status">Le PNG reprend le rendu « Après » de l'image active.</div></div><div class="actions"><button class="btn" id="downloadPng">Télécharger PNG</button><button class="btn primary" id="exportLut">Exporter LUT .cube</button></div></section>
 </section></main>
 <script>
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
-const ids = ['refInput','refDrop','refThumb','refImage','refName','framesInput','frameGrid','frameNotice','workCanvas','canvasWrap','emptyState','splitRange','splitReadout','autoMatch','downloadPng','exportLut','status','exposure','contrast','saturation','temperature','lift','gamma','gain'];
 const state = { reference:null, frames:[], active:-1, sourcePixels:null, width:0, height:0, raf:0 };
 const controls = ['exposure','contrast','saturation','temperature','lift','gamma','gain'];
 const clamp = (v,a=0,b=1) => Math.max(a,Math.min(b,v));
