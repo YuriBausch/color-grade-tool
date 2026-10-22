@@ -798,5 +798,3 @@ loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');d
     if(a==='cinema'){set('sat',104);set('crush',67);set('con',116);return;}
   }));
 })();
-
-exit_code: 0
