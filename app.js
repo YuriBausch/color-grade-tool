@@ -1,6 +1,6 @@
 
 const $=id=>document.getElementById(id);
-let refStats=null,frameStats=null,matchTransform=null,lut=null,prevImg=null,rushImgs=[],refImg=null;
+let refStats=null,lut=null,prevImg=null,rushImgs=[],refImg=null;
 
 // ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
 function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
@@ -10,8 +10,8 @@ function clamp(x,a,b){return Math.min(b,Math.max(a,x));}
 // The toggle is intentionally part of the input stage: the generated 3D LUT
 // contains this transform, so preview, auto-match and .cube export agree.
 function normalizeLogInput(v){
-  const enabled=!$('logNormalize')||$('logNormalize').checked;
-  return enabled?clamp((v-0.20)/(0.90-0.20),0,1):v;
+  // This build has no log-normalization checkbox; keep the documented default on.
+  return clamp((v-0.20)/(0.90-0.20),0,1);
 }
 
 // ---------- Linear sRGB -> Lab ----------
@@ -25,59 +25,6 @@ function xyz2lab(X,Y,Z){
   return [116*fy-16,500*(fx-fy),200*(fy-fz)];
 }
 function rgb2lab(r,g,b){const[x,y,z]=lin2xyz(r,g,b);return xyz2lab(x,y,z);}
-
-// ---------- OKLab covariance transfer (Björn Ottosson) ----------
-// Statistics are taken after the optional log normalization, in display-referred
-// RGB. The LUT itself is linear-light, so the conversion is bridged at its edge.
-function rgb2oklab(r,g,b){
-  const R=srgb2lin(clamp(r,0,1)),G=srgb2lin(clamp(g,0,1)),B=srgb2lin(clamp(b,0,1));
-  const l=0.4122214708*R+0.5363325363*G+0.0514459929*B;
-  const m=0.2119034982*R+0.6806995451*G+0.1073969566*B;
-  const s=0.0883024619*R+0.2817188376*G+0.6299787005*B;
-  const l3=Math.cbrt(Math.max(0,l)),m3=Math.cbrt(Math.max(0,m)),s3=Math.cbrt(Math.max(0,s));
-  return [0.2104542553*l3+0.7936177850*m3-0.0040720468*s3,
-    1.9779984951*l3-2.4285922050*m3+0.4505937099*s3,
-    0.0259040371*l3+0.7827717662*m3-0.8086757660*s3];
-}
-function oklab2rgb(L,a,b){
-  const l=Math.pow(Math.max(0,L+0.3963377774*a+0.2158037573*b),3);
-  const m=Math.pow(Math.max(0,L-0.1055613458*a-0.0638541728*b),3);
-  const s=Math.pow(Math.max(0,L-0.0894841775*a-1.2914855480*b),3);
-  const R=4.0767416621*l-3.3077115913*m+0.2309699292*s;
-  const G=-1.2684380046*l+2.6097574011*m-0.3413193965*s;
-  const B=-0.0041960863*l-0.7034186147*m+1.7076147010*s;
-  return [clamp(lin2srgb(R),0,1),clamp(lin2srgb(G),0,1),clamp(lin2srgb(B),0,1)];
-}
-function cholesky3(c,eps=1e-6){
-  const a=c.map(row=>row.slice()); for(let i=0;i<3;i++)a[i][i]+=eps;
-  const L=[[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<3;i++)for(let j=0;j<=i;j++){
-    let v=a[i][j]; for(let k=0;k<j;k++)v-=L[i][k]*L[j][k];
-    if(!(v>1e-12)||!Number.isFinite(v))return null;
-    L[i][j]=j===i?Math.sqrt(v):v/L[j][j];
-  } return L;
-}
-function solveLower(L,v){return [v[0]/L[0][0],(v[1]-L[1][0]*v[0]/L[0][0])/L[1][1],(v[2]-L[2][0]*v[0]/L[0][0]-L[2][1]*((v[1]-L[1][0]*v[0]/L[0][0])/L[1][1]))/L[2][2]];}
-function matVec(M,v){return [M[0][0]*v[0]+M[0][1]*v[1]+M[0][2]*v[2],M[1][0]*v[0]+M[1][1]*v[1]+M[1][2]*v[2],M[2][0]*v[0]+M[2][1]*v[1]+M[2][2]*v[2]];}
-function invertLower(L){return [solveLower(L,[1,0,0]),solveLower(L,[0,1,0]),solveLower(L,[0,0,1])].map((_,i)=>[solveLower(L,[1,0,0])[i],solveLower(L,[0,1,0])[i],solveLower(L,[0,0,1])[i]]);}
-function transpose(M){return M[0].map((_,i)=>M.map(row=>row[i]));}
-function mul3(A,B){return A.map((r,i)=>B[0].map((_,j)=>r.reduce((s,_,k)=>s+A[i][k]*B[k][j],0)));}
-function buildOKLabTransfer(ref,frame){
-  if(!ref||!frame)return null;
-  const fallback=()=>{const scale=ref.std.map((v,i)=>v/Math.max(frame.std[i],1e-6));return {mean:ref.mean.slice(),base:frame.mean.slice(),matrix:[[scale[0],0,0],[0,scale[1],0],[0,0,scale[2]]],method:'mean/std fallback'};};
-  const trace=frame.cov[0][0]+frame.cov[1][1]+frame.cov[2][2];
-  if(trace<1e-8)return fallback();
-  const Lr=cholesky3(ref.cov),Lf=cholesky3(frame.cov);
-  if(!Lr||!Lf)return fallback();
-  const A=mul3(Lr,invertLower(Lf));
-  return {mean:ref.mean.slice(),base:frame.mean.slice(),matrix:A,method:'OKLab Cholesky'};
-}
-function applyOKLabTransfer(rgb,t){
-  if(!t)return rgb;
-  const x=rgb2oklab(lin2srgb(rgb[0]),lin2srgb(rgb[1]),lin2srgb(rgb[2]));
-  const y=matVec(t.matrix,[x[0]-t.base[0],x[1]-t.base[1],x[2]-t.base[2]]).map((v,i)=>v+t.mean[i]);
-  const out=oklab2rgb(y[0],y[1],y[2]); return out.map(srgb2lin);
-}
 
 // ---------- CIEDE2000 (Sharma et al. 2005) ----------
 function deltaE2000(l1,a1,b1,l2,a2,b2){
@@ -183,12 +130,6 @@ function analyze(img,roi){
   const p=f=>sorted[clamp(Math.floor(f*(valid-1)),0,valid-1)];
   const meanCh=a=>{let s=0;for(let i=0;i<valid;i++)s+=a[i];return s/valid;};
   const mr=meanCh(rC),mg=meanCh(gC),mb=meanCh(bC);
-  const ok=new Array(valid); const om=[0,0,0];
-  for(let i=0;i<valid;i++){const q=rgb2oklab(lin2srgb(rC[i]),lin2srgb(gC[i]),lin2srgb(bC[i]));ok[i]=q;om[0]+=q[0];om[1]+=q[1];om[2]+=q[2];}
-  for(let j=0;j<3;j++)om[j]/=valid;
-  const cov=[[0,0,0],[0,0,0],[0,0,0]];
-  for(const q of ok)for(let i=0;i<3;i++)for(let j=0;j<3;j++)cov[i][j]+=(q[i]-om[i])*(q[j]-om[j])/valid;
-  const std=cov.map((row,i)=>Math.sqrt(Math.max(0,row[i])));
   let sLoR=0,sLoB=0,sHiR=0,sHiB=0,cLo=0,cHi=0;
   const tLo=p(0.35),tHi=p(0.65);
   for(let i=0;i<valid;i++){if(lum[i]<tLo){sLoR+=rC[i];sLoB+=bC[i];cLo++;}else if(lum[i]>tHi){sHiR+=rC[i];sHiB+=bC[i];cHi++;}}
@@ -197,7 +138,7 @@ function analyze(img,roi){
     sat:satSum/valid,
     warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
     warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
-    meanR:mr,meanG:mg,meanB:mb, mean:om, cov, std,
+    meanR:mr,meanG:mg,meanB:mb,
     _pixels:d,_pn:valid
   };
 }
@@ -302,7 +243,6 @@ function generateLUT(size){
   function correct(r,g,b){
     // Normalize log input before any creative grade operation.
     r=normalizeLogInput(r);g=normalizeLogInput(g);b=normalizeLogInput(b);
-    [r,g,b]=applyOKLabTransfer([r,g,b],matchTransform);
     // The reference analysis is the source of the automatic look. Previously this
     // function only read UI controls, so changing the reference could not change
     // the generated LUT. Keep manual controls additive so presets still work.
@@ -650,7 +590,6 @@ setupDrop('dropRef',img=>{
 });
 setupDrop('dropPrev',img=>{
   prevImg=img;
-  frameStats=analyze(img,roiState.prev);
   drawROI('prev');
   if(!lut){
     $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
@@ -665,7 +604,6 @@ setupDrop('dropPrev',img=>{
   $(id).addEventListener('input',()=>{syncLabels();if(refStats)generateLUT(+$('lutSize').value);});
 });
 $('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});
-$('logNormalize').addEventListener('change',()=>{if(refImg)refreshAnalysis();else if(refStats)generateLUT(+$('lutSize').value);});
 // ---------- Rapport de match PNG ----------
 function exportMatchReport(){
   const ref=$('imgRef'), graded=$('cvPrev');
@@ -704,14 +642,14 @@ $('btnDl').addEventListener('click',download);
 $('btnReport').addEventListener('click',exportMatchReport);
 function runAutoMatch(){
   if(!refStats){alert('Charge une référence avant le match auto.');return false;}
-  if(!frameStats){alert('Charge une frame de rush avant le match auto.');return false;}
-  matchTransform=buildOKLabTransfer(refStats,frameStats);
   const range=Math.max(0.001,refStats.p95-refStats.p5);
   $('warm').value=Math.round(clamp((refStats.meanR-refStats.meanB)*150,-100,100));
   $('con').value=Math.round(clamp(100*range/.73,50,150));
   $('sat').value=Math.round(clamp(100*(refStats.sat/.5),0,200));
   $('crush').value=Math.round(clamp(50*(1-refStats.p1/.08),0,100));
-  syncLabels(); generateLUT(+$('lutSize').value); return true;
+  syncLabels();
+  generateLUT(+$('lutSize').value);
+  return true;
 }
 $('btnAuto').addEventListener('click',runAutoMatch);
 $('btnReset').addEventListener('click',()=>{
@@ -756,18 +694,3 @@ loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');d
     if(a==='cinema'){set('sat',104);set('crush',67);set('con',116);return;}
   }));
 })();
-
-
-(function(){
- const root=document.querySelector('.pipeline-shell'), state={step:1,files:[],ref:null}; if(!root)return;
- const steps=[...root.querySelectorAll('[data-pipe-step]')], stages=[...root.querySelectorAll('[data-pipe-stage]')];
- const setStep=n=>{state.step=n; stages.forEach(s=>s.classList.toggle('is-active',+s.dataset.pipeStage===n)); steps.forEach(s=>s.classList.toggle('is-active',+s.dataset.pipeStep===n)); steps.forEach(s=>s.classList.toggle('is-done',+s.dataset.pipeStep<n));};
- const addFiles=(files,isRef)=>{[...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const item={file:f,url:u,w:im.naturalWidth,h:im.naturalHeight,ref:isRef};state.files=state.files.filter(x=>!(isRef&&x.ref));if(isRef)state.ref=item;state.files.push(item);render();};im.src=u;});};
- const render=()=>{const grid=document.getElementById('pipePreviewGrid'), status=document.getElementById('pipePreviewStatus'), imp=document.getElementById('pipeImportStatus');grid.innerHTML=''; if(!state.files.length)grid.innerHTML='<div class="preview-empty">Your imported images will appear here.</div>'; state.files.forEach((x,i)=>{const c=document.createElement('article');c.className='preview-card';c.innerHTML='<img src="'+x.url+'" alt="'+x.file.name+'"><div class="preview-card__meta"><div class="preview-card__name">'+x.file.name+'</div><div class="preview-card__dims">'+x.w+' × '+x.h+' · '+(x.ref?'Reference':'Frame')+'</div></div>';c.onclick=()=>{document.getElementById('pipeModalImg').src=x.url;document.getElementById('pipeModal').classList.add('is-open')};grid.appendChild(c);});const n=state.files.length;status.classList.toggle('is-ok',n>0);status.querySelector('span').textContent=n?(n+' image'+(n===1?'':'s')+' ready to review'):'No images ready';imp.classList.toggle('is-ok',!!state.ref&&state.files.length>1);imp.querySelector('span').textContent=state.ref?(state.files.length>1?'Reference and frames imported':'Reference imported — add at least one frame'):'Waiting for imports';};
- const wire=(drop,input,isRef)=>{const d=document.getElementById(drop),i=document.getElementById(input);d.addEventListener('click',ev=>{if(ev.target===i)return;ev.preventDefault();ev.stopPropagation();i.click();});i.addEventListener('click',ev=>ev.stopPropagation());i.onchange=()=>addFiles(i.files,isRef);['dragenter','dragover'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('is-over')}));['dragleave','drop'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.remove('is-over')}));d.addEventListener('drop',ev=>addFiles(ev.dataTransfer.files,isRef));};
- wire('pipeRefDrop','pipeRefInput',true);wire('pipeFramesDrop','pipeFramesInput',false);render();
- root.addEventListener('click',e=>{const s=e.target.closest('[data-pipe-step]'),n=e.target.closest('[data-pipe-next]'),p=e.target.closest('[data-pipe-prev]');if(s)setStep(+s.dataset.pipeStep);if(n)setStep(+n.dataset.pipeNext);if(p)setStep(+p.dataset.pipePrev);if(e.target.id==='pipeModal'||e.target.id==='pipeModalClose')document.getElementById('pipeModal').classList.remove('is-open');if(e.target.id==='pipeExportLut')document.getElementById('btnDl')?.click();if(e.target.id==='pipeExportJson')document.getElementById('btnExportPreset')?.click()});
-})();
-
-
-
