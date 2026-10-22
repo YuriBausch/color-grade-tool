@@ -26,6 +26,99 @@ function xyz2lab(X,Y,Z){
 }
 function rgb2lab(r,g,b){const[x,y,z]=lin2xyz(r,g,b);return xyz2lab(x,y,z);}
 
+// ---------- OKLab statistical transfer (Björn Ottosson matrices) ----------
+// All matching is performed after normalizeLogInput(), in linear-light sRGB.
+const OKLAB_EPS=1e-7;
+function linRgb2oklab(r,g,b){
+  const l=0.4122214708*r+0.5363325363*g+0.0514459929*b;
+  const m=0.2119034982*r+0.6806995451*g+0.1073969566*b;
+  const s=0.0883024619*r+0.2817188376*g+0.6299787005*b;
+  const l_=Math.cbrt(l),m_=Math.cbrt(m),s_=Math.cbrt(s);
+  return [0.2104542553*l_+0.7936177850*m_-0.0040720468*s_,
+          1.9779984951*l_-2.4285922050*m_+0.4505937099*s_,
+          0.0259040371*l_+0.7827717662*m_-0.8086757660*s_];
+}
+function oklab2linRgb(L,a,b){
+  const l_=L+0.3963377774*a+0.2158037573*b;
+  const m_=L-0.1055613458*a-0.0638541728*b;
+  const s_=L-0.0894841775*a-1.2914855480*b;
+  const l=l_*l_*l_,m=m_*m_*m_,s=s_*s_*s_;
+  return [4.0767416621*l-3.3077115913*m+0.2309699292*s,
+          -1.2684380046*l+2.6097574011*m-0.3413193965*s,
+          -0.0041960863*l-0.7034186147*m+1.7076147010*s];
+}
+function rgb2oklab(r,g,b){return linRgb2oklab(srgb2lin(r),srgb2lin(g),srgb2lin(b));}
+function oklab2rgb(L,a,b){const q=oklab2linRgb(L,a,b);return q.map(lin2srgb);}
+function covariance3(points,mean){
+  const c=[[0,0,0],[0,0,0],[0,0,0]],n=points.length;
+  for(const x of points)for(let i=0;i<3;i++)for(let j=0;j<3;j++)c[i][j]+=(x[i]-mean[i])*(x[j]-mean[j])/n;
+  return c;
+}
+function cholesky3(a){
+  // Strict lower-triangular Cholesky.  The covariance is regularized by the
+  // caller; reject every non-finite or non-positive pivot so bad statistics
+  // cannot turn into NaN pixels.
+  if(!Array.isArray(a)||a.length!==3||a.some(r=>!Array.isArray(r)||r.length!==3||r.some(v=>!Number.isFinite(v))))return null;
+  const L=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<3;i++)for(let j=0;j<=i;j++){
+    let v=a[i][j];
+    for(let k=0;k<j;k++)v-=L[i][k]*L[j][k];
+    if(!Number.isFinite(v))return null;
+    if(i===j){if(!(v>OKLAB_EPS))return null;L[i][j]=Math.sqrt(v);}
+    else {if(!(L[j][j]>0))return null;L[i][j]=v/L[j][j];}
+  }
+  return L;
+}
+function solveLower3(L,b){
+  if(!L||!b||b.length!==3||b.some(v=>!Number.isFinite(v)))return null;
+  const y=[0,0,0];
+  for(let i=0;i<3;i++){
+    let v=b[i];for(let k=0;k<i;k++)v-=L[i][k]*y[k];
+    if(!Number.isFinite(v)||!(L[i][i]>0))return null;
+    y[i]=v/L[i][i];
+  }
+  return y;
+}
+function matVec(A,v){return A.map(r=>r[0]*v[0]+r[1]*v[1]+r[2]*v[2]);}
+function finiteStats(s){
+  return !!s&&Array.isArray(s.mean)&&s.mean.length===3&&s.mean.every(Number.isFinite)&&Array.isArray(s.std)&&s.std.length===3&&s.std.every(Number.isFinite)&&Array.isArray(s.cov)&&s.cov.length===3&&s.cov.every(r=>Array.isArray(r)&&r.length===3&&r.every(Number.isFinite));
+}
+function fallbackTransfer(ref,frame){
+  const rm=finiteStats(ref)?ref.mean:[0,0,0],fm=finiteStats(frame)?frame.mean:[0,0,0];
+  const rs=finiteStats(ref)?ref.std:[1,1,1],fs=finiteStats(frame)?frame.std:[1,1,1];
+  return {method:'mean/std fallback',mean:rm,frameMean:fm,std:rs.map(v=>Number.isFinite(v)?Math.max(v,1e-5):1),frameStd:fs.map(v=>Number.isFinite(v)?Math.max(v,1e-5):1)};
+}
+function buildOKLabTransfer(ref,frame){
+  const varianceFloor=1e-10, eps=1e-6;
+  if(!finiteStats(ref)||!finiteStats(frame)||
+     ref.cov.some((r,i)=>r[i]<varianceFloor)||frame.cov.some((r,i)=>r[i]<varianceFloor))return fallbackTransfer(ref,frame);
+  // Add eps*I before factorization.  Cholesky still rejects an indefinite
+  // covariance, which deliberately routes malformed/singular input to fallback.
+  const regularize=c=>c.map((r,i)=>r.map((v,j)=>v+(i===j?eps:0)));
+  const lr=cholesky3(regularize(ref.cov)),lf=cholesky3(regularize(frame.cov));
+  if(!lr||!lf)return fallbackTransfer(ref,frame);
+  return {method:'OKLab Cholesky',mean:ref.mean,frameMean:frame.mean,Lref:lr,Lframe:lf};
+}
+function applyOKLabTransfer(x,t){
+  if(!Array.isArray(x)||x.length!==3||x.some(v=>!Number.isFinite(v))||!t)return [0,0,0];
+  if(t.method==='mean/std fallback')return x.map((v,i)=>t.mean[i]+(v-t.frameMean[i])*t.std[i]/t.frameStd[i]);
+  const centered=x.map((v,i)=>v-t.frameMean[i]);
+  // Solve L_frame*y = centered, then x' = L_ref*y + mu_ref.
+  const y=solveLower3(t.Lframe,centered), z=y&&matVec(t.Lref,y);
+  if(!z||z.some(v=>!Number.isFinite(v)))return t.mean.slice();
+  return z.map((v,i)=>v+t.mean[i]);
+}
+function oklabStats(points){
+  if(!points.length)return null;
+  const mean=[0,0,0];for(const p of points)for(let i=0;i<3;i++)mean[i]+=p[i]/points.length;
+  const cov=covariance3(points,mean);return {mean,cov,std:cov.map((r,i)=>Math.sqrt(Math.max(0,r[i])))};
+}
+function buildTransferFromImage(img,roi){
+  const {data:d,n}=sampleImg(img,roi),pts=[];
+  for(let i=0;i<n;i++){const a=d[i*4+3];if(a<=0)continue;let r=normalizeLogInput(srgb2lin(d[i*4]/255)),g=normalizeLogInput(srgb2lin(d[i*4+1]/255)),b=normalizeLogInput(srgb2lin(d[i*4+2]/255));if([r,g,b].every(Number.isFinite))pts.push(linRgb2oklab(r,g,b));}
+  return oklabStats(pts);
+}
+
 // ---------- CIEDE2000 (Sharma et al. 2005) ----------
 function deltaE2000(l1,a1,b1,l2,a2,b2){
   const C1=Math.hypot(a1,b1),C2=Math.hypot(a2,b2),Cm=(C1+C2)/2;
@@ -112,7 +205,7 @@ function zoneWarmth(sr,sb,count,globalB){
 // ---------- Analyse de la référence ----------
 function analyze(img,roi){
   const {data:d,n}=sampleImg(img,roi);
-  const lum=new Float32Array(n),rC=new Float32Array(n),gC=new Float32Array(n),bC=new Float32Array(n);
+  const lum=new Float32Array(n),rC=new Float32Array(n),gC=new Float32Array(n),bC=new Float32Array(n),okPts=[];
   let satSum=0, valid=0;
   for(let i=0;i<n;i++){
     const a=d[i*4+3], rr=d[i*4],gg=d[i*4+1],bb=d[i*4+2];
@@ -120,7 +213,7 @@ function analyze(img,roi){
     let r=srgb2lin(rr/255),g=srgb2lin(gg/255),b=srgb2lin(bb/255);
     r=normalizeLogInput(r);g=normalizeLogInput(g);b=normalizeLogInput(b);
     if(![r,g,b].every(Number.isFinite))continue;
-    rC[valid]=r;gC[valid]=g;bC[valid]=b;
+    rC[valid]=r;gC[valid]=g;bC[valid]=b;okPts.push(linRgb2oklab(r,g,b));
     lum[valid]=0.2126*r+0.7152*g+0.0722*b;
     const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
     satSum+=mx>1e-5?(mx-mn)/mx:0; valid++;
@@ -139,7 +232,7 @@ function analyze(img,roi){
     warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
     warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
     meanR:mr,meanG:mg,meanB:mb,
-    _pixels:d,_pn:valid
+    _pixels:d,_pn:valid,oklab:oklabStats(okPts)
   };
 }
 
@@ -243,6 +336,10 @@ function generateLUT(size){
   function correct(r,g,b){
     // Normalize log input before any creative grade operation.
     r=normalizeLogInput(r);g=normalizeLogInput(g);b=normalizeLogInput(b);
+    if(reference.transfer){
+      const ok=linRgb2oklab(r,g,b), matched=applyOKLabTransfer(ok,reference.transfer), rgb=oklab2linRgb(matched[0],matched[1],matched[2]);
+      r=clamp(rgb[0],0,1);g=clamp(rgb[1],0,1);b=clamp(rgb[2],0,1);
+    }
     // The reference analysis is the source of the automatic look. Previously this
     // function only read UI controls, so changing the reference could not change
     // the generated LUT. Keep manual controls additive so presets still work.
@@ -580,6 +677,7 @@ $('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.targ
 setupDrop('dropRef',img=>{
   refImg=img;
   refStats=analyze(img,roiState.ref);
+  refStats.transfer=null;
   showStats(refStats);
   showPalette(img,roiState.ref);
   const ir=$('imgRef');
@@ -642,6 +740,12 @@ $('btnDl').addEventListener('click',download);
 $('btnReport').addEventListener('click',exportMatchReport);
 function runAutoMatch(){
   if(!refStats){alert('Charge une référence avant le match auto.');return false;}
+  const frameStats=prevImg?buildTransferFromImage(prevImg,roiState.prev):null;
+  if(frameStats){
+    refStats.transfer=buildOKLabTransfer(refStats.oklab,frameStats);
+  }else{
+    refStats.transfer=null;
+  }
   const range=Math.max(0.001,refStats.p95-refStats.p5);
   $('warm').value=Math.round(clamp((refStats.meanR-refStats.meanB)*150,-100,100));
   $('con').value=Math.round(clamp(100*range/.73,50,150));
