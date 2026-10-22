@@ -351,7 +351,7 @@ function generateLUT(size){
     const sat=clamp((p.sat/100)*refSat,.05,2.5), con=clamp((p.con/100)*refContrast,.25,2.5), warm=p.warm/100+refWarm, lum=.2126*r+.7152*g+.0722*b;
     let R=(r-.5)*con+.5,G=(g-.5)*con+.5,B=(b-.5)*con+.5;
     const z=lum<.33?p.zSh/100:lum>.66?p.zHi/100:p.zMd/100;
-    const zw=lum<.33?p.zShW/100:p.zHiW/100;
+    const zw=lum<.33?p.zShW/100:lum>.66?p.zHiW/100:p.zMdW/100;
     const ex=Math.pow(2,z*.6); R*=ex; G*=ex; B*=ex;
     const y=.2126*R+.7152*G+.0722*B;
     R=y+(R-y)*sat; G=y+(G-y)*sat; B=y+(B-y)*sat;
