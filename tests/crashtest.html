@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crash tests — Colour Grade Tool</title>
+<style>
+:root{--bg:#121212;--panel:#1c1c1c;--line:#2b2b2b;--text:#ececec;--muted:#9a9a9a;--ok:#7ccf96;--warn:#e6c065;--bad:#ec8378;--accent:#f0b25a}
+body{margin:0;padding:24px;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}p{color:var(--muted);max-width:900px}
+code{font-family:ui-monospace,monospace;color:var(--accent)}
+.summary{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;min-width:180px}
+.kpi b{display:block;font-size:22px;font-family:ui-monospace,monospace}.kpi span{color:var(--muted);font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+td.n{font-family:ui-monospace,monospace;text-align:right;white-space:nowrap}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.thumbs{display:flex;gap:4px}.thumbs figure{margin:0}.thumbs img,.thumbs canvas{width:150px;display:block;border-radius:3px}
+.thumbs figcaption{font-size:10px;color:var(--muted);text-align:center}
+#status{color:var(--accent)}
+iframe{position:absolute;width:1280px;height:900px;left:-99999px;top:0;border:0}
+</style>
+</head>
+<body>
+<h1>Crash tests du match</h1>
+<p>Chaque cas passe un rush (Rec.709, S-Log3 ou LogC3) dans le vrai moteur de <code>index.html</code>, avec comme référence soit l'image finale du même plan (cas idéal), soit celle d'un autre plan (cas réel). Le résultat est comparé à l'image finale du film. <b>ΔE zones</b> : écart des couleurs moyennes ombres / tons moyens / lumières. <b>ΔE pixel</b> : écart moyen pixel à pixel, seulement sur les plans alignés (pas de décor VFX).</p>
+<p>Données : lancer d'abord <code>python tools/fetch_tos.py</code> puis <code>python tools/make_examples.py</code>. Images : (CC) Blender Foundation | mango.blender.org.</p>
+<div id="status">Chargement…</div>
+<div class="summary" id="summary"></div>
+<table><thead><tr><th>Plan</th><th>Rush</th><th>Réf</th><th>ΔE zones avant → après</th><th>ΔE pixel avant → après</th><th>Aperçu (rush · résultat · vérité · réf)</th></tr></thead><tbody id="rows"></tbody></table>
+<iframe id="app" src="../index.html"></iframe>
+<script>
+const DATA='../testdata/tos_png/';
+// Référence « autre plan » : même type de scène quand c'est possible
+const PARTNER={'01_2a':'05_1a','05_1a':'01_2a','04_2a':'04_5a','04_5a':'02_3a','02_3a':'04_5a','04_2c':'08_3a','08_3a':'04_2c'};
+const RUSHES=['rec709','slog3','logc3'];
+const loadImg=src=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('Introuvable : '+src));i.src=src;});
+const pixels=img=>{const c=document.createElement('canvas');c.width=img.naturalWidth||img.width;c.height=img.naturalHeight||img.height;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0);return {c,x,d:x.getImageData(0,0,c.width,c.height)};};
+const cls=v=>v<3?'ok':v<6?'warn':'bad';
+const fmt=v=>v==null?'—':v.toFixed(1);
+function thumb(src){const f=document.createElement('figure');f.appendChild(src);return f;}
+function mini(canvasOrImg,label){const c=document.createElement('canvas');const w=300,h=Math.round((canvasOrImg.height||canvasOrImg.naturalHeight)*w/(canvasOrImg.width||canvasOrImg.naturalWidth));c.width=w;c.height=h;c.getContext('2d').drawImage(canvasOrImg,0,0,w,h);const f=document.createElement('figure');f.appendChild(c);const cap=document.createElement('figcaption');cap.textContent=label;f.appendChild(cap);return f;}
+
+async function main(){
+  const fr=document.getElementById('app');
+  // l'iframe démarre sur about:blank : on attend que le moteur de l'app soit réellement chargé
+  for(let i=0;i<200&&!(fr.contentWindow&&typeof fr.contentWindow.applyLutRGBA==='function');i++)await new Promise(r=>setTimeout(r,50));
+  const W=fr.contentWindow;
+  const E=W.eval('({deltaE2000,rgb2lab,LIN8,okSamples,matchScore,applyLutRGBA})');
+  const manifest=await (await fetch(DATA+'manifest.json')).json();
+  const aligned=Object.fromEntries(manifest.map(m=>[m.shot,m.pixelAligned]));
+  const cache={};const get=async n=>cache[n]||(cache[n]=await loadImg(DATA+n+'.png'));
+  const results=[];
+  const pixelDE=(a,b)=>{let s=0,n=0;for(let i=0;i<a.length;i+=4*53){const x=E.rgb2lab(E.LIN8[a[i]],E.LIN8[a[i+1]],E.LIN8[a[i+2]]),y=E.rgb2lab(E.LIN8[b[i]],E.LIN8[b[i+1]],E.LIN8[b[i+2]]);s+=E.deltaE2000(...x,...y);n++;}return s/n;};
+  const cases=[];
+  for(const m of manifest)for(const r of RUSHES)for(const refShot of [m.shot,PARTNER[m.shot]])if(refShot)cases.push({shot:m.shot,rush:r,refShot});
+  let k=0;
+  for(const c of cases){
+    document.getElementById('status').textContent=`Cas ${++k}/${cases.length} : ${c.shot} · ${c.rush} · réf ${c.refShot}`;
+    await new Promise(r=>setTimeout(r,0));
+    const rush=await get(`${c.shot}_${c.rush}`),ref=await get(`${c.refShot}_final`),truth=await get(`${c.shot}_final`);
+    W.__rush=rush;W.__ref=ref;
+    W.eval(`refImg=__ref;prevImg=__rush;pins=[];refModel=buildModel(imagesSamples([refImg],null));srcModel=buildModel(imagesSamples([prevImg],null));rebuildMatch();generateLUT(33);`);
+    const R=pixels(rush),T=pixels(truth);
+    const before=new Uint8ClampedArray(R.d.data);
+    E.applyLutRGBA(R.d.data);R.x.putImageData(R.d,0,0);
+    const ts=E.okSamples(T.d.data,4);
+    const res={...c,zoneBefore:E.matchScore(E.okSamples(before,4),ts),zoneAfter:E.matchScore(E.okSamples(R.d.data,4),ts),
+      pixBefore:aligned[c.shot]?pixelDE(before,T.d.data):null,pixAfter:aligned[c.shot]?pixelDE(R.d.data,T.d.data):null};
+    results.push(res);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${c.shot}${aligned[c.shot]?'':' <span style="color:var(--muted)">(VFX)</span>'}</td><td>${c.rush}</td><td>${c.refShot===c.shot?'même plan':'autre plan ('+c.refShot+')'}</td>`+
+      `<td class="n">${fmt(res.zoneBefore)} → <b class="${cls(res.zoneAfter)}">${fmt(res.zoneAfter)}</b></td>`+
+      `<td class="n">${res.pixAfter==null?'—':fmt(res.pixBefore)+' → <b class="'+cls(res.pixAfter)+'">'+fmt(res.pixAfter)+'</b>'}</td><td><div class="thumbs"></div></td>`;
+    const th=tr.querySelector('.thumbs');
+    const rc=document.createElement('canvas');rc.width=R.c.width;rc.height=R.c.height;rc.getContext('2d').putImageData(new ImageData(before,R.c.width,R.c.height),0,0);
+    th.append(mini(rc,'rush'),mini(R.c,'résultat'),mini(truth,'vérité'),mini(ref,'réf'));
+    document.getElementById('rows').appendChild(tr);
+  }
+  const avg=(f,xs)=>{const v=xs.map(f).filter(x=>x!=null);return v.reduce((a,b)=>a+b,0)/v.length;};
+  const groups=[['Tous les cas',results],['Réf = même plan',results.filter(r=>r.refShot===r.shot)],['Réf = autre plan',results.filter(r=>r.refShot!==r.shot)],
+    ...RUSHES.map(r=>['Rush '+r,results.filter(x=>x.rush===r)]),['Plans alignés (ΔE pixel)',results.filter(r=>r.pixAfter!=null)]];
+  document.getElementById('summary').innerHTML=groups.map(([t,xs])=>{
+    const usePix=t.startsWith('Plans alignés');const a=avg(r=>usePix?r.pixBefore:r.zoneBefore,xs),b=avg(r=>usePix?r.pixAfter:r.zoneAfter,xs);
+    return `<div class="kpi"><span>${t} · ${xs.length} cas</span><b>${fmt(a)} → <span class="${cls(b)}">${fmt(b)}</span></b><span>${usePix?'ΔE pixel':'ΔE zones'} moyen</span></div>`;}).join('');
+  document.getElementById('status').textContent=`Terminé : ${results.length} cas.`;
+  window.__results=results;
+}
+main().catch(e=>{document.getElementById('status').textContent='Erreur : '+e.message;console.error(e);});
+</script>
+</body>
+</html>

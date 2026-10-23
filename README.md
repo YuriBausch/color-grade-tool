@@ -28,3 +28,16 @@ Tout se passe en OKLab :
 4. **Gamut mapping** : réduction du chroma à teinte/luminance constantes au lieu d'un clip par canal.
 
 Le score affiché est le ΔE2000 moyen entre les couleurs moyennes des ombres / tons moyens / hautes lumières de la réf et du rush gradé (avant/après).
+
+## Crash tests
+
+Paires de test tirées de *Tears of Steel* ((CC) Blender Foundation | mango.blender.org, CC BY 3.0) : rush brut et image finale du film pour un même plan. Les rushs sont ré-encodés en Rec.709, S-Log3/S-Gamut3.Cine et LogC3/AWG3.
+
+```bash
+python -m pip install numpy OpenEXR pillow
+python tools/fetch_tos.py        # ~90 Mo dans testdata/ (non versionné)
+python tools/make_examples.py    # PNG de test + images d'exemple dans examples/
+node tools/crashtest.mjs         # tableau des écarts ΔE avant → après
+```
+
+`tests/crashtest.html` affiche les mêmes cas dans le navigateur, avec aperçus (servir le dossier en local, par ex. `python -m http.server`).

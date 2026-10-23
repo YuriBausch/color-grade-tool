@@ -886,7 +886,7 @@ function exportMatchReport(){
 }
 
 // ---------- Wiring ----------
-setupDrop('dropRef',img=>{
+function setRefImage(img){
   refImg=img;refSamplesCache=null;
   const ir=$('imgRef');
   ir.src=img.src;ir.style.display='block';
@@ -894,21 +894,45 @@ setupDrop('dropRef',img=>{
   $('tagRef').style.display='block';
   $('pipRef').src=img.src;updatePip();
   pins=[];pendingPin=null;setPickStage(null);renderPinList();
-  refreshAnalysis();
-});
-setupDrop('dropPrev',img=>{
+  refreshAnalysis();markShowcase();
+}
+function setRushImage(img){
   prevImg=img;
   pins=[];pendingPin=null;setPickStage(null);renderPinList();
   drawROI('prev');
   refreshSource();
-  renderPrev(img);
-});
+  renderPrev(img);markShowcase();
+}
+setupDrop('dropRef',setRefImage);
+setupDrop('dropPrev',setRushImage);
+
+// ---------- Exemples (showcase) : références et rushs log de Tears of Steel ----------
+const SHOWCASE_DIR='examples/';
+function markShowcase(){
+  document.querySelectorAll('.ex-card').forEach(c=>{
+    const img=c.dataset.kind==='ref'?refImg:prevImg;
+    c.classList.toggle('is-on',!!img&&img.src===new URL(SHOWCASE_DIR+c.dataset.file,location.href).href);
+  });
+}
+function loadShowcase(item){
+  const img=new Image();
+  img.onload=()=>(item.kind==='ref'?setRefImage:setRushImage)(img);
+  img.onerror=()=>alert('Impossible de charger l’exemple '+item.file);
+  img.src=SHOWCASE_DIR+item.file;
+}
+fetch(SHOWCASE_DIR+'showcase.json').then(r=>r.ok?r.json():[]).then(list=>{
+  const card=x=>`<button class="ex-card" type="button" data-kind="${x.kind}" data-file="${x.file}" title="Charger comme ${x.kind==='ref'?'référence':'plan'}"><img src="${SHOWCASE_DIR+x.file}" alt="" loading="lazy" draggable="false"><span>${x.label}</span></button>`;
+  $('exRefs').innerHTML=list.filter(x=>x.kind==='ref').map(card).join('');
+  $('exRushes').innerHTML=list.filter(x=>x.kind==='rush').map(card).join('');
+  document.querySelectorAll('.ex-card').forEach(b=>b.addEventListener('click',()=>loadShowcase(list.find(x=>x.file===b.dataset.file))));
+  if(!list.length)$('showcase').hidden=true;
+}).catch(()=>{$('showcase').hidden=true;});
 $('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});
 CTL_IDS.forEach(id=>{
   $(id).addEventListener('input',()=>{syncLabels();scheduleRegen(true);});
   $(id).addEventListener('dblclick',()=>{$(id).value=CTL_DEFAULTS[id];syncLabels();scheduleRegen();});
 });
-$('lutSize').addEventListener('change',scheduleRegen);
+$('lutSize').addEventListener('change',()=>scheduleRegen());
 function resetControls(){setControls(CTL_DEFAULTS);}
 function runAutoMatch(){
   if(!refImg||!prevImg){alert('Charge une référence et une frame de rush.');return false;}

@@ -1,0 +1,42 @@
+[
+ {
+  "kind": "ref",
+  "label": "Amsterdam, jour",
+  "file": "tos_01_2a_final.jpg"
+ },
+ {
+  "kind": "ref",
+  "label": "Intérieur chaud",
+  "file": "tos_04_2a_final.jpg"
+ },
+ {
+  "kind": "ref",
+  "label": "Nuit sci-fi",
+  "file": "tos_04_2c_final.jpg"
+ },
+ {
+  "kind": "ref",
+  "label": "Atelier sombre",
+  "file": "tos_08_3a_final.jpg"
+ },
+ {
+  "kind": "rush",
+  "label": "Rue · S-Log3",
+  "file": "tos_05_1a_slog3.jpg"
+ },
+ {
+  "kind": "rush",
+  "label": "Pont · LogC3",
+  "file": "tos_01_2a_logc3.jpg"
+ },
+ {
+  "kind": "rush",
+  "label": "Intérieur · S-Log3",
+  "file": "tos_04_2a_slog3.jpg"
+ },
+ {
+  "kind": "rush",
+  "label": "Machine · LogC3",
+  "file": "tos_02_3a_logc3.jpg"
+ }
+]
