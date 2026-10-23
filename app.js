@@ -127,7 +127,7 @@ function setupDrop(dropId,cb){
   d.addEventListener('dragleave',()=>d.classList.remove('over'));
   d.addEventListener('drop',e=>{e.preventDefault();d.classList.remove('over');loadImageFile(e.dataTransfer.files[0],cb);});
   d.addEventListener('click',()=>{
-    if(roiMode)return;
+    if(roiMode||pickStage)return;
     const i=document.createElement('input');i.type='file';i.accept='image/*';
     i.onchange=()=>{if(i.files&&i.files[0])loadImageFile(i.files[0],cb);};
     i.click();
@@ -254,8 +254,43 @@ function buildToneCurve(src,ref){
 }
 function applyCurve(t,x){const v=clamp(x,0,1)*TONE_N,i=Math.min(Math.floor(v),TONE_N-1),f=v-i;return t[i]*(1-f)+t[i+1]*f;}
 
+// Match statistique pur (100 %), en OKLab.  w : buffer de poids des bandes.
+function baseMatch(m,L0,a0,b0,w){
+  const L=applyCurve(m.tone,L0);
+  bandWeights(percentileOf(m.src.q,L0),w);
+  let sa=0,sb=0,ra=0,rb=0,k=0;
+  for(let i=0;i<BANDS.length;i++){
+    sa+=w[i]*m.src.cast[i][0];sb+=w[i]*m.src.cast[i][1];
+    ra+=w[i]*m.ref.cast[i][0];rb+=w[i]*m.ref.cast[i][1];
+    k+=w[i]*clamp(m.ref.spread[i]/Math.max(m.src.spread[i],0.004),0.35,2.5);
+  }
+  return [L,(a0-sa)*k+ra,(b0-sb)*k+rb];
+}
+
+// ---------- Points de couleur (pipette) ----------
+// Chaque point associe une couleur du rush à la couleur visée dans la réf.
+// L'écart restant après le match statistique est corrigé localement : les
+// couleurs du rush proches de l'échantillon reçoivent la correction, avec un
+// poids gaussien sur la distance OKLab (L pondéré moitié moins que a/b).
+const PIN_SIGMA=0.05, PIN_L_GAIN=0.6;
+let pins=[];
+function pinDeltas(m){
+  const w=new Float64Array(BANDS.length);
+  return pins.map(p=>{const q=baseMatch(m,p.src[0],p.src[1],p.src[2],w);return {s:p.src,d:[p.ref[0]-q[0],p.ref[1]-q[1],p.ref[2]-q[2]]};});
+}
+function pinCorrection(pd,L0,a0,b0,out){
+  let sw=0,dL=0,da=0,db=0;
+  for(const p of pd){
+    const x=(L0-p.s[0])*0.5,y=a0-p.s[1],z=b0-p.s[2],wt=Math.exp(-(x*x+y*y+z*z)/(2*PIN_SIGMA*PIN_SIGMA));
+    sw+=wt;dL+=wt*p.d[0];da+=wt*p.d[1];db+=wt*p.d[2];
+  }
+  const n=Math.max(1,sw);out[0]=dL/n*PIN_L_GAIN;out[1]=da/n;out[2]=db/n;
+  return out;
+}
+
 function rebuildMatch(){
   match=(refModel&&srcModel)?{ref:refModel,src:srcModel,tone:buildToneCurve(srcModel,refModel),pivot:quant(refModel.q,0.5)}:null;
+  if(match)match.pins=pinDeltas(match);
   updateUI();
 }
 
@@ -275,7 +310,7 @@ function updateUI(){
 }
 
 // ---------- Réglages ----------
-const CTL_DEFAULTS={intensity:100,matchLum:100,matchCol:100,sat:100,con:100,warm:0,tint:0,crush:50,zSh:0,zShW:0,zMd:0,zMdW:0,zHi:0,zHiW:0};
+const CTL_DEFAULTS={intensity:100,matchLum:100,matchCol:100,pinStr:100,sat:100,con:100,warm:0,tint:0,crush:50,zSh:0,zShW:0,zMd:0,zMdW:0,zHi:0,zHiW:0};
 const CTL_IDS=Object.keys(CTL_DEFAULTS);
 function readParams(){const p={};CTL_IDS.forEach(id=>p[id]=+$(id).value);return p;}
 
@@ -285,22 +320,16 @@ function makeMapper(m,P){
   const kLum=P.matchLum/100,kCol=P.matchCol/100,mix=P.intensity/100,sat=P.sat/100,con=P.con/100;
   const crush=(P.crush-50)/50,warm=P.warm/100,tint=P.tint/100;
   const zL=[P.zSh,P.zMd,P.zHi].map(v=>v/100),zW=[P.zShW,P.zMdW,P.zHiW].map(v=>v/100);
+  const kPin=P.pinStr/100,pc=[0,0,0];
   return (r,g,b)=>{
     const o=srgb2ok(r,g,b),L0=o[0],a0=o[1],b0=o[2];
     let L=L0,a=a0,bb=b0;
     if(m){
-      // 1. luminance
-      L=L0+(applyCurve(m.tone,L0)-L0)*kLum;
-      // 2. couleur par bande tonale (position = percentile du pixel dans le rush)
-      bandWeights(percentileOf(m.src.q,L0),w);
-      let sa=0,sb=0,ra=0,rb=0,k=0;
-      for(let i=0;i<BANDS.length;i++){
-        sa+=w[i]*m.src.cast[i][0];sb+=w[i]*m.src.cast[i][1];
-        ra+=w[i]*m.ref.cast[i][0];rb+=w[i]*m.ref.cast[i][1];
-        k+=w[i]*clamp(m.ref.spread[i]/Math.max(m.src.spread[i],0.004),0.35,2.5);
-      }
-      const fa=(a0-sa)*k+ra,fb=(b0-sb)*k+rb;
-      a=a0+(fa-a0)*kCol;bb=b0+(fb-b0)*kCol;
+      // 1-2. luminance (courbe) + couleur par bande tonale
+      const q=baseMatch(m,L0,a0,b0,w);
+      // points de couleur : correction locale par-dessus le match
+      if(m.pins&&m.pins.length&&kPin>0){pinCorrection(m.pins,L0,a0,b0,pc);q[0]+=pc[0]*kPin;q[1]+=pc[1]*kPin;q[2]+=pc[2]*kPin;}
+      L=L0+(q[0]-L0)*kLum;a=a0+(q[1]-a0)*kCol;bb=b0+(q[2]-b0)*kCol;
     }
     // 3. trims manuels
     const pivot=m?m.pivot:0.5;
@@ -329,10 +358,19 @@ function generateLUT(size){
   }
   lut={size:n,data};
 }
-let regenPending=false;
-function scheduleRegen(){
+// Rendu progressif : pendant un geste (fast), LUT 17³ + preview réduite ;
+// rendu complet dès que l'utilisateur s'arrête.
+let regenPending=false,regenFast=false,fullTimer=null;
+function scheduleRegen(fast){
+  regenFast=!!fast;
+  clearTimeout(fullTimer);
+  if(fast)fullTimer=setTimeout(()=>scheduleRegen(false),160);
   if(regenPending)return;regenPending=true;
-  requestAnimationFrame(()=>{regenPending=false;generateLUT(+$('lutSize').value);if(prevImg)renderPrev(prevImg);});
+  requestAnimationFrame(()=>{
+    regenPending=false;
+    generateLUT(regenFast?17:+$('lutSize').value);
+    if(prevImg)renderPrev(prevImg,regenFast);
+  });
 }
 function refreshSource(){
   const list=[prevImg,...rushImgs.map(x=>x.img)].filter(Boolean);
@@ -458,6 +496,7 @@ function syncLabels(){
   $('vInt').textContent=pct('intensity');
   $('vLum').textContent=pct('matchLum');
   $('vCol').textContent=pct('matchCol');
+  $('vPin').textContent=pct('pinStr');
   $('vSat').textContent=pct('sat');
   $('vCon').textContent=pct('con');
   $('vWarm').textContent=$('warm').value;
@@ -516,23 +555,118 @@ function drawScopes(d){
 }
 
 // ---------- Rendu de la prévisualisation ----------
-function renderPrev(img){
+function renderPrev(img,fast){
   const cv=$('cvPrev');
-  const scale=Math.min(1,(focusMode?1920:1280)/img.width);
+  const scale=Math.min(1,(fast?640:focusMode?1920:1280)/img.width);
   cv.width=Math.max(1,Math.round(img.width*scale));
   cv.height=Math.max(1,Math.round(img.height*scale));
   $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
-  const before=$('baBefore');
-  if(before.src!==img.src)before.src=img.src;
+  const before=$('baBefore'),beforeSrc=compareMode==='ref'&&refImg?refImg.src:img.src;
+  if(before.src!==beforeSrc)before.src=beforeSrc;
   const ctx=cv.getContext('2d',{willReadFrequently:true});
   ctx.drawImage(img,0,0,cv.width,cv.height);
-  if(!lut)return;
-  const id=ctx.getImageData(0,0,cv.width,cv.height);
-  applyLutRGBA(id.data);
-  ctx.putImageData(id,0,0);
+  if(lut){
+    const id=ctx.getImageData(0,0,cv.width,cv.height);
+    applyLutRGBA(id.data);
+    ctx.putImageData(id,0,0);
+  }
+  drawPins();
+  if(fast||!lut)return;
   // score + scopes : coûteux, recalculés seulement quand l'utilisateur s'arrête
   clearTimeout(scoreTimer);scoreTimer=setTimeout(()=>updateScoreAndScopes(img),180);
 }
+
+// ---------- Comparaison : avant / après ou réf / après (C) ----------
+let compareMode='before';
+function setCompare(mode){
+  if(mode==='ref'&&!refImg)return;
+  compareMode=mode;
+  document.body.classList.toggle('cmp-ref',mode==='ref');
+  $('cmpBefore').classList.toggle('is-on',mode==='before');
+  $('cmpRef').classList.toggle('is-on',mode==='ref');
+  $('baLabelBefore').textContent=mode==='ref'?'Réf':'Avant';
+  if(prevImg)renderPrev(prevImg);
+}
+$('cmpBefore').addEventListener('click',()=>setCompare('before'));
+$('cmpRef').addEventListener('click',()=>setCompare('ref'));
+
+// ---------- Pipette : échantillonnage et interface ----------
+const MAX_PINS=6;
+let pickStage=null,pendingPin=null;
+// Rectangle réellement occupé par l'image dans un élément en object-fit: contain
+function contentRect(el,natW,natH){
+  const b=el.getBoundingClientRect(),s=Math.min(b.width/natW,b.height/natH),w=natW*s,h=natH*s;
+  return {left:b.left+(b.width-w)/2,top:b.top+(b.height-h)/2,width:w,height:h};
+}
+// Couleur moyenne (9×9 px, moyenne en linéaire) autour d'un point en coordonnées relatives
+function sampleColor(img,fx,fy){
+  const W=img.naturalWidth||img.width,H=img.naturalHeight||img.height,R=4;
+  const sx=clamp(Math.round(fx*W)-R,0,Math.max(0,W-2*R-1)),sy=clamp(Math.round(fy*H)-R,0,Math.max(0,H-2*R-1));
+  const c=document.createElement('canvas');c.width=c.height=2*R+1;
+  const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,sx,sy,2*R+1,2*R+1,0,0,2*R+1,2*R+1);
+  const d=x.getImageData(0,0,2*R+1,2*R+1).data;let r=0,g=0,b=0,n=0;
+  for(let i=0;i<d.length;i+=4){r+=LIN8[d[i]];g+=LIN8[d[i+1]];b+=LIN8[d[i+2]];n++;}
+  r/=n;g/=n;b/=n;
+  const hex='#'+[r,g,b].map(v=>Math.round(lin2srgb(v)*255).toString(16).padStart(2,'0')).join('');
+  return {ok:linRgb2oklab(r,g,b),hex};
+}
+function setPickStage(s){
+  pickStage=s;
+  document.body.classList.toggle('picking',!!s);
+  document.body.classList.toggle('picking-ref',s==='ref');
+  document.body.classList.toggle('picking-rush',s==='rush');
+  if(s==='rush'&&compareMode==='ref')setCompare('before');
+  $('btnPin').textContent=s?'Annuler':'＋ Ajouter un point';
+  $('pinStatus').textContent=s==='ref'?'① Clique un élément dans la référence (peau, ciel, mur…)':s==='rush'?'② Clique le même élément dans ton plan':'';
+}
+function startPick(){
+  if(pickStage){pendingPin=null;setPickStage(null);return;}
+  if(!match){alert('Charge une référence et une frame de ton plan.');return;}
+  if(pins.length>=MAX_PINS){alert('Maximum '+MAX_PINS+' points. Supprime-en un pour en ajouter.');return;}
+  if(roiMode)toggleROIMode();
+  if(focusMode)setFocus(false);
+  setPickStage('ref');
+}
+$('roiStageRef').addEventListener('click',e=>{
+  if(pickStage!=='ref')return;
+  e.stopPropagation();
+  const r=$('imgRef').getBoundingClientRect(),fx=clamp((e.clientX-r.left)/r.width,0,1),fy=clamp((e.clientY-r.top)/r.height,0,1);
+  const s=sampleColor(refImg,fx,fy);
+  pendingPin={ref:s.ok,refHex:s.hex,rfx:fx,rfy:fy};
+  setPickStage('rush');drawPins();
+});
+$('baPrev').addEventListener('click',e=>{
+  if(pickStage!=='rush'||!pendingPin)return;
+  const cv=$('cvPrev'),r=contentRect(cv,cv.width,cv.height);
+  const fx=(e.clientX-r.left)/r.width,fy=(e.clientY-r.top)/r.height;
+  if(fx<0||fx>1||fy<0||fy>1)return;
+  const s=sampleColor(prevImg,fx,fy);
+  pins.push(Object.assign(pendingPin,{src:s.ok,srcHex:s.hex,pfx:fx,pfy:fy}));
+  pendingPin=null;setPickStage(null);
+  onPinsChanged();
+});
+function onPinsChanged(){rebuildMatch();renderPinList();scheduleRegen();}
+function clearPins(){if(!pins.length&&!pendingPin)return;pins=[];pendingPin=null;setPickStage(null);onPinsChanged();}
+function renderPinList(){
+  $('pinList').innerHTML=pins.map((p,i)=>`<div class="pin-row"><span class="pin-num">${i+1}</span><span class="pin-sw" style="background:${p.srcHex}" title="Ton plan ${p.srcHex}"></span><span class="pin-arrow">→</span><span class="pin-sw" style="background:${p.refHex}" title="Référence ${p.refHex}"></span><button class="btn btn--sm btn--ghost" type="button" data-pin="${i}" aria-label="Supprimer le point ${i+1}">✕</button></div>`).join('');
+  $('pinEmpty').style.display=pins.length?'none':'';
+  $('pinStrRow').style.display=pins.length?'':'none';
+}
+$('pinList').addEventListener('click',e=>{const b=e.target.closest('[data-pin]');if(!b)return;pins.splice(+b.dataset.pin,1);onPinsChanged();});
+$('btnPin').addEventListener('click',startPick);
+// Repères numérotés sur les deux images
+function drawPins(){
+  document.querySelectorAll('.pin-dot').forEach(x=>x.remove());
+  const all=pendingPin?pins.concat([pendingPin]):pins;
+  const ba=$('baPrev'),cv=$('cvPrev'),bb=ba.getBoundingClientRect(),cr=cv.width?contentRect(cv,cv.width,cv.height):null;
+  all.forEach((p,i)=>{
+    const mk=(parent,x,y)=>{const d=document.createElement('span');d.className='pin-dot';d.textContent=i+1;d.style.left=x;d.style.top=y;parent.appendChild(d);};
+    if(refImg)mk($('roiStageRef'),(p.rfx*100)+'%',(p.rfy*100)+'%');
+    if(p.pfx!==undefined&&cr&&bb.width)mk(ba,(cr.left-bb.left+p.pfx*cr.width)+'px',(cr.top-bb.top+p.pfy*cr.height)+'px');
+  });
+}
+window.addEventListener('resize',drawPins);
+$('baBefore').addEventListener('load',drawPins);
 let scoreTimer=null,beforeCache={key:null,value:0};
 function updateScoreAndScopes(img){
   const cv=$('cvPrev');
@@ -585,7 +719,7 @@ function toggleROIMode(){roiMode=!roiMode;document.body.classList.toggle('roi-mo
   const ba=$('baPrev');
   let dragging=false;
   const set=x=>{const r=ba.getBoundingClientRect();const pct=clamp((x-r.left)/r.width*100,0,100);ba.style.setProperty('--split',pct+'%');};
-  const start=e=>{if(roiMode)return;dragging=true;set((e.touches?e.touches[0]:e).clientX);};
+  const start=e=>{if(roiMode||pickStage)return;dragging=true;set((e.touches?e.touches[0]:e).clientX);};
   const move=e=>{if(!dragging)return;e.preventDefault();set((e.touches?e.touches[0]:e).clientX);};
   const end=()=>dragging=false;
   ba.addEventListener('mousedown',start);ba.addEventListener('touchstart',start,{passive:true});
@@ -744,17 +878,19 @@ setupDrop('dropRef',img=>{
   $('ringRef').style.display='none';
   $('tagRef').style.display='block';
   $('pipRef').src=img.src;updatePip();
+  pins=[];pendingPin=null;setPickStage(null);renderPinList();
   refreshAnalysis();
 });
 setupDrop('dropPrev',img=>{
   prevImg=img;
+  pins=[];pendingPin=null;setPickStage(null);renderPinList();
   drawROI('prev');
   refreshSource();
   renderPrev(img);
 });
 $('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});
 CTL_IDS.forEach(id=>{
-  $(id).addEventListener('input',()=>{syncLabels();scheduleRegen();});
+  $(id).addEventListener('input',()=>{syncLabels();scheduleRegen(true);});
   $(id).addEventListener('dblclick',()=>{$(id).value=CTL_DEFAULTS[id];syncLabels();scheduleRegen();});
 });
 $('lutSize').addEventListener('change',scheduleRegen);
@@ -796,7 +932,9 @@ document.addEventListener('keydown',e=>{
   if(e.ctrlKey||e.metaKey||e.altKey||/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)&&e.target.type!=='range')return;
   const k=e.key.toLowerCase();
   if(k==='f'&&prevImg){e.preventDefault();setFocus(!focusMode);}
+  else if(k==='escape'&&pickStage){pendingPin=null;setPickStage(null);drawPins();}
   else if(k==='escape'&&focusMode)setFocus(false);
+  else if(k==='c'&&prevImg&&refImg)setCompare(compareMode==='ref'?'before':'ref');
   else if(k==='r'&&focusMode){pipOn=!pipOn;updatePip();}
 });
 

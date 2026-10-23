@@ -112,6 +112,28 @@ body:not(.ready) #lutSize{opacity:.35}
 .focus .viewer__well{min-height:calc(100vh - 230px)}
 .pip{position:absolute;top:12px;right:12px;z-index:7;width:24%;min-width:140px;border-radius:6px;box-shadow:0 0 0 1px rgba(255,255,255,.25),0 6px 24px rgba(0,0,0,.6);pointer-events:none}
 .pip[hidden],body:not(.focus) .pip{display:none}
+.seg{display:inline-flex;padding:2px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--bg-2)}
+.seg button{padding:4px 10px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;font-weight:550;cursor:pointer}
+.seg button.is-on{background:var(--panel-2);color:var(--text);box-shadow:0 0 0 1px var(--line-2)}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
+.cmp-ref .ba__label--before{color:#9ecbff}
+.panel__head{flex-wrap:wrap}
+
+/* ---------- Pipette ---------- */
+.pin-btn{width:100%}
+.picking .pin-btn{border-color:var(--accent);color:var(--accent)}
+.pin-status{color:var(--accent);font-size:12px;line-height:1.5}
+.pin-status:not(:empty){margin-top:8px}
+.pin-list{display:flex;flex-direction:column;gap:5px;margin:10px 0 12px}
+.pin-list:empty{display:none}
+.pin-row{display:grid;grid-template-columns:22px 1fr 14px 1fr auto;align-items:center;gap:8px;padding:5px 5px 5px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg-2)}
+.pin-num{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.pin-sw{height:20px;border-radius:5px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.pin-arrow{color:var(--faint);font-size:12px;text-align:center}
+.pin-dot{position:absolute;z-index:8;display:grid;place-items:center;width:20px;height:20px;transform:translate(-50%,-50%);border-radius:50%;background:rgba(0,0,0,.6);border:2px solid #fff;color:#fff;font:600 10.5px/1 Inter,sans-serif;pointer-events:none;box-shadow:0 1px 6px rgba(0,0,0,.6)}
+.picking-ref .viewer--ref .viewer__well,.picking-rush .viewer:not(.viewer--ref) .viewer__well{box-shadow:inset 0 0 0 2px var(--accent)}
+.picking-ref #roiStageRef,.picking-rush .ba{cursor:crosshair}
+@media(max-width:1500px){.has-rush .viewer:not(.viewer--ref) .panel__sub{display:none}}
 
 /* ---------- Score ---------- */
 .score{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:22px;padding:16px 20px}
@@ -284,6 +306,9 @@ body:not(.ready) .lock-note{display:block}
       <div class="panel__head">
         <div class="panel__title"><em>02</em>Ton plan <span class="panel__sub">glisse pour comparer avant / après</span></div>
         <div class="head-actions">
+          <div class="seg replace-rush" role="group" aria-label="Comparer avec" title="Comparer le résultat à l'original ou à la référence (C)">
+            <button type="button" id="cmpBefore" class="is-on">Avant</button><button type="button" id="cmpRef">Réf</button>
+          </div>
           <button class="btn btn--sm btn--ghost focus-only" id="btnPip" type="button" title="Afficher la référence en incrustation (R)">Réf en incrustation</button>
           <button class="btn btn--sm btn--ghost replace-rush" type="button" onclick="document.getElementById('dropPrev').click()">Changer</button>
           <button class="btn btn--sm replace-rush" id="btnFocus" type="button" title="Agrandir la preview (F) · Échap pour revenir">⤢ Agrandir</button>
@@ -296,7 +321,7 @@ body:not(.ready) .lock-note{display:block}
           <div class="roi-overlay" id="roiOverlayPrev"></div>
           <img id="baBefore" alt="Avant">
           <canvas id="cvPrev"></canvas>
-          <span class="ba__label ba__label--before">Avant</span>
+          <span class="ba__label ba__label--before" id="baLabelBefore">Avant</span>
           <span class="ba__label ba__label--after">Après</span>
           <div class="ba__handle"></div>
         </div>
@@ -383,6 +408,16 @@ body:not(.ready) .lock-note{display:block}
       <div class="ctl"><label for="intensity">Intensité globale <span id="vInt">100%</span></label><input type="range" id="intensity" min="0" max="100" value="100"></div>
       <div class="ctl"><label for="matchLum">Lumière et contraste de la réf <span id="vLum">100%</span></label><input type="range" id="matchLum" min="0" max="100" value="100"></div>
       <div class="ctl"><label for="matchCol">Couleurs de la réf <span id="vCol">100%</span></label><input type="range" id="matchCol" min="0" max="100" value="100"></div>
+    </div>
+
+    <div class="section">
+      <div class="section__head"><span class="section__title">Points de couleur</span><span class="section__hint">pipette</span></div>
+      <p class="reset-hint">Aligne précisément une couleur de ton plan sur celle de la réf : une peau sur une peau, un ciel sur un ciel.</p>
+      <button id="btnPin" class="btn btn--sm pin-btn" type="button">＋ Ajouter un point</button>
+      <div id="pinStatus" class="pin-status"></div>
+      <div id="pinEmpty" class="muted" style="margin:8px 0 12px">Aucun point pour l'instant.</div>
+      <div id="pinList" class="pin-list"></div>
+      <div class="ctl" id="pinStrRow" style="display:none"><label for="pinStr">Force des points <span id="vPin">100%</span></label><input type="range" id="pinStr" min="0" max="100" value="100"></div>
     </div>
 
     <div class="section">
