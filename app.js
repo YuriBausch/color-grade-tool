@@ -240,12 +240,20 @@ function monotoneCubic(xs,ys){
 }
 
 // ---------- Courbe de tonalité rush -> référence ----------
-const TONE_ANCHORS=[0.005,0.02,0.07,0.17,0.33,0.5,0.67,0.83,0.93,0.98,0.995];
+// Courbe paramétrique plutôt qu'un histogram matching complet : on reprend les noirs (P1)
+// et les blancs (P99) de la réf, son contraste des tons moyens (rapport des écarts
+// interquartiles, appliqué symétriquement autour de la médiane), et on déplace
+// l'exposition (médiane) aux 3/4 vers celle de la réf.  Moins de degrés de liberté =
+// on copie le look sans recopier le contenu de la réf (crash tests : autre plan 7,7 -> 6,5).
+const TONE_ANCHORS=[0.01,0.25,0.5,0.75,0.99], TONE_EXPOSURE=0.75;
 const TONE_N=1024;
 function buildToneCurve(src,ref){
+  const qs=p=>quant(src.q,p),qr=p=>quant(ref.q,p);
+  const mid=qs(.5)+TONE_EXPOSURE*(qr(.5)-qs(.5));
+  const con=clamp((qr(.75)-qr(.25))/Math.max(qs(.75)-qs(.25),0.02),0.4,3);
   const xs=[],ys=[];
   for(const p of TONE_ANCHORS){
-    const x=quant(src.q,p),y=quant(ref.q,p);
+    const x=qs(p),y=(p===0.01||p===0.99)?qr(p):mid+(x-qs(.5))*con;
     if(xs.length&&x-xs[xs.length-1]<0.012)continue;
     xs.push(x);ys.push(y);
   }
