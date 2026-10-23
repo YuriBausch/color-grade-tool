@@ -12,7 +12,7 @@ Ref shot + frame de rush → LUT `.cube` qui donne au rush le look de la référ
 2. Déposez une frame de votre rush, exportée depuis Resolve **au point de la chaîne où vous poserez la LUT** (en général après la conversion log → Rec.709)
 3. Affinez si besoin (intensité, lumière/couleur de la réf, saturation, contraste, noirs, température, teinte, zones), puis exportez la LUT et posez-la sur un node
 
-Raccourcis : **F** preview agrandie (Échap pour revenir), **R** référence en incrustation, **C** comparer avant/après ↔ réf/après.
+Raccourcis : **F** preview agrandie (Échap pour revenir), **R** référence en incrustation, **B** basculer en plein cadre avant ↔ après, **C** comparer avant/après ↔ réf/après.
 
 **Points de couleur (pipette)** : clique un élément dans la réf puis le même dans ton plan (peau, ciel…). L'outil aligne précisément cette couleur, avec une correction locale qui épargne les couleurs éloignées.
 

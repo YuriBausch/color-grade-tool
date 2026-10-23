@@ -117,6 +117,13 @@ body:not(.ready) #lutSize{opacity:.35}
 .seg button.is-on{background:var(--panel-2);color:var(--text);box-shadow:0 0 0 1px var(--line-2)}
 .seg button:disabled{opacity:.35;cursor:not-allowed}
 .cmp-ref .ba__label--before{color:#9ecbff}
+.viewer img{-webkit-user-drag:none;user-select:none}
+
+.ba.full .ba__handle{display:none}
+.ba.full canvas{clip-path:none}
+.ba.full.show-before canvas{visibility:hidden}
+.ba.full.show-before .ba__label--after,.ba.full:not(.show-before) .ba__label--before{display:none}
+.ba.full .ba__label{font-size:12px;padding:5px 10px}
 .panel__head{flex-wrap:wrap}
 
 /* ---------- Pipette ---------- */
@@ -294,7 +301,7 @@ body:not(.ready) .lock-note{display:block}
           Un still de film, une photo… dont la lumière et les couleurs te plaisent.
           <small>PNG · JPEG · TIFF — ou clique pour parcourir</small>
         </div>
-        <div class="imgwrap"><div class="roi-stage" id="roiStageRef"><img id="imgRef" style="display:none" alt="Image de référence"><div class="roi-overlay" id="roiOverlayRef"></div></div></div>
+        <div class="imgwrap"><div class="roi-stage" id="roiStageRef"><img id="imgRef" style="display:none" alt="Image de référence" draggable="false"><div class="roi-overlay" id="roiOverlayRef"></div></div></div>
       </div>
       <div class="viewer__foot">
         <span class="palette-title" id="paletteTitle" style="display:none">Palette</span>
@@ -309,17 +316,18 @@ body:not(.ready) .lock-note{display:block}
           <div class="seg replace-rush" role="group" aria-label="Comparer avec" title="Comparer le résultat à l'original ou à la référence (C)">
             <button type="button" id="cmpBefore" class="is-on">Avant</button><button type="button" id="cmpRef">Réf</button>
           </div>
+          <button class="btn btn--sm replace-rush" id="btnFlip" type="button" title="Basculer en plein cadre entre avant et après (B)">⇄ Avant/Après</button>
           <button class="btn btn--sm btn--ghost focus-only" id="btnPip" type="button" title="Afficher la référence en incrustation (R)">Réf en incrustation</button>
           <button class="btn btn--sm btn--ghost replace-rush" type="button" onclick="document.getElementById('dropPrev').click()">Changer</button>
           <button class="btn btn--sm replace-rush" id="btnFocus" type="button" title="Agrandir la preview (F) · Échap pour revenir">⤢ Agrandir</button>
         </div>
       </div>
       <div class="viewer__well" id="dropPrev">
-        <img class="pip" id="pipRef" alt="Référence" hidden>
+        <img class="pip" id="pipRef" alt="Référence" draggable="false" hidden>
         <span class="tag" id="tagPrev" style="display:none">Rush</span>
         <div class="ba" id="baPrev" style="display:none">
           <div class="roi-overlay" id="roiOverlayPrev"></div>
-          <img id="baBefore" alt="Avant">
+          <img id="baBefore" alt="Avant" draggable="false">
           <canvas id="cvPrev"></canvas>
           <span class="ba__label ba__label--before" id="baLabelBefore">Avant</span>
           <span class="ba__label ba__label--after">Après</span>

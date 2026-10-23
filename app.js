@@ -576,6 +576,20 @@ function renderPrev(img,fast){
   clearTimeout(scoreTimer);scoreTimer=setTimeout(()=>updateScoreAndScopes(img),180);
 }
 
+// ---------- Bascule plein cadre avant ↔ après (B) ----------
+let flipView=null; // null = slider, 'before' | 'after' = image entière
+function setFlip(v){
+  flipView=v;const ba=$('baPrev');
+  ba.classList.toggle('full',!!v);ba.classList.toggle('show-before',v==='before');
+  $('btnFlip').classList.toggle('active',!!v);
+  $('btnFlip').textContent=v==='before'?'⇄ '+(compareMode==='ref'?'Réf':'Avant'):v==='after'?'⇄ Après':'⇄ Avant/Après';
+}
+function toggleFlip(){if(prevImg)setFlip(flipView==='before'?'after':'before');}
+$('btnFlip').addEventListener('click',toggleFlip);
+// Les images ne doivent jamais être glissées : un drag natif redéposé sur la
+// zone « Ton plan » rechargeait l'image comme un nouveau rush (et effaçait les points).
+document.addEventListener('dragstart',e=>{if(e.target.closest&&e.target.closest('.viewer'))e.preventDefault();});
+
 // ---------- Comparaison : avant / après ou réf / après (C) ----------
 let compareMode='before';
 function setCompare(mode){
@@ -585,6 +599,7 @@ function setCompare(mode){
   $('cmpBefore').classList.toggle('is-on',mode==='before');
   $('cmpRef').classList.toggle('is-on',mode==='ref');
   $('baLabelBefore').textContent=mode==='ref'?'Réf':'Avant';
+  if(flipView)setFlip(flipView);
   if(prevImg)renderPrev(prevImg);
 }
 $('cmpBefore').addEventListener('click',()=>setCompare('before'));
@@ -719,7 +734,7 @@ function toggleROIMode(){roiMode=!roiMode;document.body.classList.toggle('roi-mo
   const ba=$('baPrev');
   let dragging=false;
   const set=x=>{const r=ba.getBoundingClientRect();const pct=clamp((x-r.left)/r.width*100,0,100);ba.style.setProperty('--split',pct+'%');};
-  const start=e=>{if(roiMode||pickStage)return;dragging=true;set((e.touches?e.touches[0]:e).clientX);};
+  const start=e=>{if(roiMode||pickStage)return;if(e.cancelable&&!e.touches)e.preventDefault();if(flipView)setFlip(null);dragging=true;set((e.touches?e.touches[0]:e).clientX);};
   const move=e=>{if(!dragging)return;e.preventDefault();set((e.touches?e.touches[0]:e).clientX);};
   const end=()=>dragging=false;
   ba.addEventListener('mousedown',start);ba.addEventListener('touchstart',start,{passive:true});
@@ -934,6 +949,7 @@ document.addEventListener('keydown',e=>{
   if(k==='f'&&prevImg){e.preventDefault();setFocus(!focusMode);}
   else if(k==='escape'&&pickStage){pendingPin=null;setPickStage(null);drawPins();}
   else if(k==='escape'&&focusMode)setFocus(false);
+  else if(k==='b'&&prevImg){e.preventDefault();toggleFlip();}
   else if(k==='c'&&prevImg&&refImg)setCompare(compareMode==='ref'?'before':'ref');
   else if(k==='r'&&focusMode){pipOn=!pipOn;updatePip();}
 });
