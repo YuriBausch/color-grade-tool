@@ -1,23 +1,26 @@
 # Colour Grade Tool
 
-Ref shot → analyse perceptuelle → LUT `.cube` pour DaVinci Resolve / Premiere / Flame.
+Ref shot + frame de rush → LUT `.cube` qui donne au rush le look de la référence (DaVinci Resolve / Premiere / Flame).
 
 - 100 % client-side (aucune image envoyée), hébergeable sur GitHub Pages
-- Traitement en espace linéaire (décodage sRGB IEC 61966-2-1)
-- Courbe de tonalité ancrée sur les percentiles P1–P99 de la référence
-- Export conforme à la spec `.cube` (LUT_3D_SIZE, DOMAIN_MIN/MAX)
-- Prévisualisation avant/après avec slider, LUT 33³ ou 65³
+- Match automatique dès que les deux images sont chargées
+- Export `.cube` 33³ ou 65³, entrée et sortie en valeurs code sRGB / Rec.709
 
 ## Utilisation
 
 1. Déposez la frame de référence (le look visé)
-2. Déposez une frame de rush pour prévisualiser avant/après
-3. Ajustez les réglages, téléchargez la LUT, importez-la dans Resolve
+2. Déposez une frame de votre rush, exportée depuis Resolve **au point de la chaîne où vous poserez la LUT** (en général après la conversion log → Rec.709)
+3. Affinez si besoin (intensité, lumière/couleur de la réf, saturation, contraste, noirs, température, teinte, zones), puis exportez la LUT et posez-la sur un node
 
-## Look Match v2
+Pour un rush dont le contenu diffère beaucoup de la réf : dessinez une **zone de match** sur des éléments comparables, ou ajoutez plusieurs frames du plan (match multi-rushs).
 
-Le module **Look Match · adaptation statistique** compare les percentiles P2/P50/P98 par canal en log2, le chroma médian des tons moyens et la saturation. Il dérive un lift/gain/scale ainsi que des corrections chroma/saturation adaptées au rush, plutôt que de copier platement la référence.
+## Algorithme (app.js)
 
-L'interface v2 ajoute les entrées **Référence**, **Frame à adapter**, **Analyser & adapter**, **LUT .cube 33³** et **Paramètres JSON**, avec aperçu avant/après. Les calculs restent dans le navigateur. PNG/JPEG sont recommandés ; les fichiers EXR doivent être convertis en proxy PNG/JPEG si le navigateur ne les décode pas.
+Tout se passe en OKLab :
 
-La convention `.cube` est RGB, avec la composante R en boucle interne, puis G et B. Valeurs de sanity-check du pipeline candlelight : black `-15.19`, mid `-11.89`, white `-3.47` (log2), chroma mids `[+0.374, -0.096, -0.147]`, saturation `0.566`.
+1. **Luminance** — courbe de tonalité monotone qui envoie les percentiles de L du rush sur ceux de la référence (11 ancres P0.5→P99.5, pentes bornées, spline Fritsch–Carlson).
+2. **Couleur** — 5 bandes tonales en percentile (ombres → hautes lumières). Pour chacune : dominante (moyenne robuste pondérée vers les pixels neutres) et étendue chromatique. Chaque pixel est recentré sur la dominante du rush, rescalé en chroma, puis replacé sur la dominante de la référence.
+3. **Trims manuels** appliqués après le match.
+4. **Gamut mapping** : réduction du chroma à teinte/luminance constantes au lieu d'un clip par canal.
+
+Le score affiché est le ΔE2000 moyen entre les couleurs moyennes des ombres / tons moyens / hautes lumières de la réf et du rush gradé (avant/après).

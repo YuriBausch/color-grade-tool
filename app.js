@@ -1,33 +1,31 @@
 const $=id=>document.getElementById(id);
-let refStats=null,lut=null,prevImg=null,rushImgs=[],refImg=null;
+let refImg=null,prevImg=null,rushImgs=[],refModel=null,srcModel=null,match=null,lut=null;
+
+// =====================================================================
+//  Principe
+//  Les frames (réf + rush) sont traitées comme des images display-referred
+//  (sRGB / Rec.709 gamma).  Tout le match se fait en OKLab :
+//   1. Luminance : courbe de tonalité monotone qui fait correspondre les
+//      percentiles de L du rush à ceux de la référence (histogram matching
+//      régularisé sur 11 ancres + spline monotone Fritsch–Carlson).
+//   2. Couleur : pour 5 bandes tonales (ombres → hautes lumières), on mesure
+//      la dominante (moyenne robuste pondérée vers les neutres) et l'étendue
+//      chromatique.  Chaque pixel est recentré sur la dominante du rush,
+//      rescalé en chroma, puis replacé sur la dominante de la référence.
+//   3. Réglages manuels (trims) appliqués après le match.
+//   4. Retour en sRGB avec gamut mapping (on réduit le chroma, pas de clip
+//      canal par canal qui casse les teintes).
+//  La LUT .cube est indexée en valeurs code (0–1) en entrée ET en sortie :
+//  elle s'applique sur la même image que la frame exportée.
+// =====================================================================
 
 // ---------- sRGB <-> linéaire (IEC 61966-2-1) ----------
 function srgb2lin(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
 function lin2srgb(c){return c<=0.0031308?c*12.92:1.055*Math.pow(c,1/2.4)-0.055;}
 function clamp(x,a,b){return Math.min(b,Math.max(a,x));}
-// ---------- Input log normalization (before creative grade) ----------
-// The toggle is intentionally part of the input stage: the generated 3D LUT
-// contains this transform, so preview, auto-match and .cube export agree.
-function normalizeLogInput(v){
-  // This build has no log-normalization checkbox; keep the documented default on.
-  return clamp((v-0.20)/(0.90-0.20),0,1);
-}
+const LIN8=new Float32Array(256);for(let i=0;i<256;i++)LIN8[i]=srgb2lin(i/255);
 
-// ---------- Linear sRGB -> Lab ----------
-function lin2xyz(r,g,b){
-  const X=0.4124*r+0.3576*g+0.1805*b, Y=0.2126*r+0.7152*g+0.0722*b, Z=0.0193*r+0.1192*g+0.9505*b;
-  return [X/0.95047,Y/1.0,Z/1.08883];
-}
-function fxyz(t){return t>0.008856?Math.cbrt(t):(903.3*t+16)/116;}
-function xyz2lab(X,Y,Z){
-  const fx=fxyz(X),fy=fxyz(Y),fz=fxyz(Z);
-  return [116*fy-16,500*(fx-fy),200*(fy-fz)];
-}
-function rgb2lab(r,g,b){const[x,y,z]=lin2xyz(r,g,b);return xyz2lab(x,y,z);}
-
-// ---------- OKLab statistical transfer (Björn Ottosson matrices) ----------
-// All matching is performed after normalizeLogInput(), in linear-light sRGB.
-const OKLAB_EPS=1e-7;
+// ---------- OKLab (Björn Ottosson) ----------
 function linRgb2oklab(r,g,b){
   const l=0.4122214708*r+0.5363325363*g+0.0514459929*b;
   const m=0.2119034982*r+0.6806995451*g+0.1073969566*b;
@@ -41,83 +39,37 @@ function oklab2linRgb(L,a,b){
   const l_=L+0.3963377774*a+0.2158037573*b;
   const m_=L-0.1055613458*a-0.0638541728*b;
   const s_=L-0.0894841775*a-1.2914855480*b;
-  // Preserve the sign of LMS cone responses; squaring here collapses negative components and desaturates the match.
-  const l=l_**3,m=m_**3,s=s_**3;
+  const l=l_*l_*l_,m=m_*m_*m_,s=s_*s_*s_;
   return [4.0767416621*l-3.3077115913*m+0.2309699292*s,
           -1.2684380046*l+2.6097574011*m-0.3413193965*s,
           -0.0041960863*l-0.7034186147*m+1.7076147010*s];
 }
-function rgb2oklab(r,g,b){return linRgb2oklab(srgb2lin(r),srgb2lin(g),srgb2lin(b));}
-function oklab2rgb(L,a,b){const q=oklab2linRgb(L,a,b);return q.map(lin2srgb);}
-function covariance3(points,mean){
-  const c=[[0,0,0],[0,0,0],[0,0,0]],n=points.length;
-  for(const x of points)for(let i=0;i<3;i++)for(let j=0;j<3;j++)c[i][j]+=(x[i]-mean[i])*(x[j]-mean[j])/n;
-  return c;
-}
-function cholesky3(a){
-  // Strict lower-triangular Cholesky.  The covariance is regularized by the
-  // caller; reject every non-finite or non-positive pivot so bad statistics
-  // cannot turn into NaN pixels.
-  if(!Array.isArray(a)||a.length!==3||a.some(r=>!Array.isArray(r)||r.length!==3||r.some(v=>!Number.isFinite(v))))return null;
-  const L=[[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<3;i++)for(let j=0;j<=i;j++){
-    let v=a[i][j];
-    for(let k=0;k<j;k++)v-=L[i][k]*L[j][k];
-    if(!Number.isFinite(v))return null;
-    if(i===j){if(!(v>OKLAB_EPS))return null;L[i][j]=Math.sqrt(v);}
-    else {if(!(L[j][j]>0))return null;L[i][j]=v/L[j][j];}
+function srgb2ok(r,g,b){return linRgb2oklab(srgb2lin(r),srgb2lin(g),srgb2lin(b));}
+// OKLab -> sRGB encodé, avec gamut mapping à teinte et luminance constantes.
+function ok2srgbMapped(L,a,b){
+  L=clamp(L,0,1);
+  let q=oklab2linRgb(L,a,b);
+  const inGamut=v=>v[0]>=-1e-4&&v[1]>=-1e-4&&v[2]>=-1e-4&&v[0]<=1.0001&&v[1]<=1.0001&&v[2]<=1.0001;
+  if(!inGamut(q)){
+    let lo=0,hi=1;
+    for(let i=0;i<14;i++){const t=(lo+hi)/2;if(inGamut(oklab2linRgb(L,a*t,b*t)))lo=t;else hi=t;}
+    q=oklab2linRgb(L,a*lo,b*lo);
   }
-  return L;
+  return [lin2srgb(clamp(q[0],0,1)),lin2srgb(clamp(q[1],0,1)),lin2srgb(clamp(q[2],0,1))];
 }
-function solveLower3(L,b){
-  if(!L||!b||b.length!==3||b.some(v=>!Number.isFinite(v)))return null;
-  const y=[0,0,0];
-  for(let i=0;i<3;i++){
-    let v=b[i];for(let k=0;k<i;k++)v-=L[i][k]*y[k];
-    if(!Number.isFinite(v)||!(L[i][i]>0))return null;
-    y[i]=v/L[i][i];
-  }
-  return y;
+
+// ---------- Linear sRGB -> CIELab (pour le ΔE) ----------
+function lin2xyz(r,g,b){
+  const X=0.4124*r+0.3576*g+0.1805*b, Y=0.2126*r+0.7152*g+0.0722*b, Z=0.0193*r+0.1192*g+0.9505*b;
+  return [X/0.95047,Y/1.0,Z/1.08883];
 }
-function matVec(A,v){return A.map(r=>r[0]*v[0]+r[1]*v[1]+r[2]*v[2]);}
-function finiteStats(s){
-  return !!s&&Array.isArray(s.mean)&&s.mean.length===3&&s.mean.every(Number.isFinite)&&Array.isArray(s.std)&&s.std.length===3&&s.std.every(Number.isFinite)&&Array.isArray(s.cov)&&s.cov.length===3&&s.cov.every(r=>Array.isArray(r)&&r.length===3&&r.every(Number.isFinite));
+function fxyz(t){return t>0.008856?Math.cbrt(t):(903.3*t+16)/116;}
+function xyz2lab(X,Y,Z){
+  const fx=fxyz(X),fy=fxyz(Y),fz=fxyz(Z);
+  return [116*fy-16,500*(fx-fy),200*(fy-fz)];
 }
-function fallbackTransfer(ref,frame){
-  const rm=finiteStats(ref)?ref.mean:[0,0,0],fm=finiteStats(frame)?frame.mean:[0,0,0];
-  const rs=finiteStats(ref)?ref.std:[1,1,1],fs=finiteStats(frame)?frame.std:[1,1,1];
-  return {method:'mean/std fallback',mean:rm,frameMean:fm,std:rs.map(v=>Number.isFinite(v)?Math.max(v,1e-5):1),frameStd:fs.map(v=>Number.isFinite(v)?Math.max(v,1e-5):1)};
-}
-function buildOKLabTransfer(ref,frame){
-  const varianceFloor=1e-10, eps=1e-6;
-  if(!finiteStats(ref)||!finiteStats(frame)||
-     ref.cov.some((r,i)=>r[i]<varianceFloor)||frame.cov.some((r,i)=>r[i]<varianceFloor))return fallbackTransfer(ref,frame);
-  // Add eps*I before factorization.  Cholesky still rejects an indefinite
-  // covariance, which deliberately routes malformed/singular input to fallback.
-  const regularize=c=>c.map((r,i)=>r.map((v,j)=>v+(i===j?eps:0)));
-  const lr=cholesky3(regularize(ref.cov)),lf=cholesky3(regularize(frame.cov));
-  if(!lr||!lf)return fallbackTransfer(ref,frame);
-  return {method:'OKLab Cholesky',mean:ref.mean,frameMean:frame.mean,Lref:lr,Lframe:lf};
-}
-function applyOKLabTransfer(x,t){
-  if(!Array.isArray(x)||x.length!==3||x.some(v=>!Number.isFinite(v))||!t)return [0,0,0];
-  if(t.method==='mean/std fallback')return x.map((v,i)=>t.mean[i]+(v-t.frameMean[i])*t.std[i]/t.frameStd[i]);
-  const centered=x.map((v,i)=>v-t.frameMean[i]);
-  // Solve L_frame*y = centered, then x' = L_ref*y + mu_ref.
-  const y=solveLower3(t.Lframe,centered), z=y&&matVec(t.Lref,y);
-  if(!z||z.some(v=>!Number.isFinite(v)))return t.mean.slice();
-  return z.map((v,i)=>v+t.mean[i]);
-}
-function oklabStats(points){
-  if(!points.length)return null;
-  const mean=[0,0,0];for(const p of points)for(let i=0;i<3;i++)mean[i]+=p[i]/points.length;
-  const cov=covariance3(points,mean);return {mean,cov,std:cov.map((r,i)=>Math.sqrt(Math.max(0,r[i])))};
-}
-function buildTransferFromImage(img,roi){
-  const {data:d,n}=sampleImg(img,roi),pts=[];
-  for(let i=0;i<n;i++){const a=d[i*4+3];if(a<=0)continue;let r=normalizeLogInput(srgb2lin(d[i*4]/255)),g=normalizeLogInput(srgb2lin(d[i*4+1]/255)),b=normalizeLogInput(srgb2lin(d[i*4+2]/255));if([r,g,b].every(Number.isFinite))pts.push(linRgb2oklab(r,g,b));}
-  return oklabStats(pts);
-}
+function rgb2lab(r,g,b){const[x,y,z]=lin2xyz(r,g,b);return xyz2lab(x,y,z);}
+function ok2lab(o){const q=oklab2linRgb(o[0],o[1],o[2]).map(v=>clamp(v,0,1));return rgb2lab(q[0],q[1],q[2]);}
 
 // ---------- CIEDE2000 (Sharma et al. 2005) ----------
 function deltaE2000(l1,a1,b1,l2,a2,b2){
@@ -141,7 +93,6 @@ function deltaE2000(l1,a1,b1,l2,a2,b2){
   const T=1-0.17*Math.cos(hm-Math.PI/6)+0.24*Math.cos(2*hm)+0.32*Math.cos(3*hm+Math.PI/30)-0.20*Math.cos(4*hm-63*Math.PI/180);
   const dTheta=30*Math.exp(-Math.pow((hm-275*Math.PI/180)/(25*Math.PI/180),2));
   const C7=Math.pow(Cpm,7);
-  // Sharma et al. 2005: chroma scale factor (the validated form).
   const SC=1+0.045*Cpm;
   const L50=(Lpm-50)*(Lpm-50);
   const SL=1+0.015*L50/Math.sqrt(20+L50);
@@ -157,17 +108,17 @@ function loadImageFile(f,cb){
   const url=URL.createObjectURL(f);
   const img=new Image();
   img.onload=()=>cb(img,url);
-  img.onerror=()=>{URL.revokeObjectURL(url);alert('⚠ Impossible de décoder cette image.');};
+  img.onerror=()=>{URL.revokeObjectURL(url);alert('⚠ Impossible de décoder cette image (EXR/DPX : exporte un PNG/JPEG/TIFF 8 bits depuis Resolve).');};
   img.src=url;
 }
 function addRushFiles(files){
   const list=Array.from(files||[]).filter(f=>f.type&&f.type.startsWith('image/'));
   let pending=list.length;if(!pending)return;
-  list.forEach(f=>loadImageFile(f,(img,url)=>{rushImgs.push({img,url});pending--;if(!pending)updateRushCount();}));
+  list.forEach(f=>loadImageFile(f,(img,url)=>{rushImgs.push({img,url});pending--;if(!pending){updateRushCount();refreshSource();}}));
 }
 function updateRushCount(){
   const n=rushImgs.length;
-  $('rushCount').textContent=n?(n+' rush'+(n>1?'s':'')+' inclus dans le match'):'Aucun rush additionnel';
+  $('rushCount').textContent=n?(n+' rush'+(n>1?'s':'')+' additionnel'+(n>1?'s':'')+' inclus dans le match'):'Aucun rush additionnel';
 }
 
 function setupDrop(dropId,cb){
@@ -176,6 +127,7 @@ function setupDrop(dropId,cb){
   d.addEventListener('dragleave',()=>d.classList.remove('over'));
   d.addEventListener('drop',e=>{e.preventDefault();d.classList.remove('over');loadImageFile(e.dataTransfer.files[0],cb);});
   d.addEventListener('click',()=>{
+    if(roiMode)return;
     const i=document.createElement('input');i.type='file';i.accept='image/*';
     i.onchange=()=>{if(i.files&&i.files[0])loadImageFile(i.files[0],cb);};
     i.click();
@@ -192,48 +144,214 @@ function sampleImg(img,roi){
   const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,x*img.width,y*img.height,rw*img.width,rh*img.height,0,0,W,H);
   return {data:ctx.getImageData(0,0,W,H).data,n:W*H};
 }
-
-// ---------- Chaleur de zone bornée et conditionnée au signal ----------
-function zoneWarmth(sr,sb,count,globalB){
-  if(!count)return 1;
-  const mr=sr/count, mb=sb/count;
-  if(mr+mb<0.01)return 1;
-  if(mb<Math.max(0.006,globalB*0.2))return 1;
-  return clamp(mr/mb,0.6,1.6);
+// Pixels RGBA 8 bits -> échantillons OKLab
+function okSamples(d,step){
+  step=step||1;
+  const n=Math.floor(d.length/4/step),L=new Float32Array(n),A=new Float32Array(n),B=new Float32Array(n);let k=0;
+  for(let i=0;i<d.length;i+=4*step){
+    if(d[i+3]===0)continue;
+    const o=linRgb2oklab(LIN8[d[i]],LIN8[d[i+1]],LIN8[d[i+2]]);
+    L[k]=o[0];A[k]=o[1];B[k]=o[2];k++;
+  }
+  return {L:L.subarray(0,k),A:A.subarray(0,k),B:B.subarray(0,k),n:k};
+}
+function imagesSamples(imgs,roi){
+  const parts=imgs.map(img=>okSamples(sampleImg(img,roi).data));
+  const n=parts.reduce((s,p)=>s+p.n,0),L=new Float32Array(n),A=new Float32Array(n),B=new Float32Array(n);
+  let o=0;for(const p of parts){L.set(p.L,o);A.set(p.A,o);B.set(p.B,o);o+=p.n;}
+  return {L,A,B,n};
 }
 
-// ---------- Analyse de la référence ----------
-function analyze(img,roi){
-  const {data:d,n}=sampleImg(img,roi);
-  const lum=new Float32Array(n),rC=new Float32Array(n),gC=new Float32Array(n),bC=new Float32Array(n),okPts=[];
-  let satSum=0, valid=0;
-  for(let i=0;i<n;i++){
-    const a=d[i*4+3], rr=d[i*4],gg=d[i*4+1],bb=d[i*4+2];
-    if(a<=0||![rr,gg,bb].every(Number.isFinite))continue;
-    let r=srgb2lin(rr/255),g=srgb2lin(gg/255),b=srgb2lin(bb/255);
-    r=normalizeLogInput(r);g=normalizeLogInput(g);b=normalizeLogInput(b);
-    if(![r,g,b].every(Number.isFinite))continue;
-    rC[valid]=r;gC[valid]=g;bC[valid]=b;okPts.push(linRgb2oklab(r,g,b));
-    lum[valid]=0.2126*r+0.7152*g+0.0722*b;
-    const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
-    satSum+=mx>1e-5?(mx-mn)/mx:0; valid++;
+// ---------- Modèle statistique d'une image (OKLab) ----------
+const NQ=1024;
+const BANDS=[0.03,0.2,0.5,0.8,0.97], BAND_SIGMA=0.13;
+const NEUTRAL_C=0.045; // chroma OKLab sous laquelle un pixel compte comme « neutre » pour la dominante
+function bandWeights(p,out){
+  let s=0;for(let k=0;k<BANDS.length;k++){const d=p-BANDS[k];out[k]=Math.exp(-d*d/(2*BAND_SIGMA*BAND_SIGMA));s+=out[k];}
+  for(let k=0;k<BANDS.length;k++)out[k]/=s;
+  return out;
+}
+function quant(q,p){const x=clamp(p,0,1)*NQ,i=Math.min(Math.floor(x),NQ-1),f=x-i;return q[i]*(1-f)+q[i+1]*f;}
+function percentileOf(q,x){
+  if(x<=q[0])return 0; if(x>=q[NQ])return 1;
+  let lo=0,hi=NQ;while(hi-lo>1){const m=(lo+hi)>>1;if(q[m]<=x)lo=m;else hi=m;}
+  if(x===q[lo]){
+    // plateau (zone écrêtée) : on prend son milieu
+    let a=lo;while(a>0&&q[a-1]===x)a--;
+    return (a+lo)/2/NQ;
   }
-  if(!valid)throw new Error('Aucun pixel valide dans la ROI');
-  const sorted=lum.slice(0,valid).sort();
-  const p=f=>sorted[clamp(Math.floor(f*(valid-1)),0,valid-1)];
-  const meanCh=a=>{let s=0;for(let i=0;i<valid;i++)s+=a[i];return s/valid;};
-  const mr=meanCh(rC),mg=meanCh(gC),mb=meanCh(bC);
-  let sLoR=0,sLoB=0,sHiR=0,sHiB=0,cLo=0,cHi=0;
-  const tLo=p(0.35),tHi=p(0.65);
-  for(let i=0;i<valid;i++){if(lum[i]<tLo){sLoR+=rC[i];sLoB+=bC[i];cLo++;}else if(lum[i]>tHi){sHiR+=rC[i];sHiB+=bC[i];cHi++;}}
-  return {
-    p1:p(0.01),p5:p(0.05),p25:p(0.25),p50:p(0.50),p75:p(0.75),p95:p(0.95),p99:p(0.99),
-    sat:satSum/valid,
-    warmLo:zoneWarmth(sLoR,sLoB,cLo,mb),
-    warmHi:zoneWarmth(sHiR,sHiB,cHi,mb),
-    meanR:mr,meanG:mg,meanB:mb,
-    _pixels:d,_pn:valid,oklab:oklabStats(okPts)
+  return (lo+(x-q[lo])/(q[hi]-q[lo]))/NQ;
+}
+function buildModel(s){
+  if(!s||s.n<16)return null;
+  const n=s.n,sorted=Float32Array.from(s.L).sort(),q=new Float32Array(NQ+1);
+  for(let i=0;i<=NQ;i++)q[i]=sorted[Math.round(i/NQ*(n-1))];
+  const K=BANDS.length,w=new Float64Array(K);
+  const sw=new Float64Array(K),swn=new Float64Array(K),na=new Float64Array(K),nb=new Float64Array(K),pa=new Float64Array(K),pb=new Float64Array(K);
+  const P=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const p=P[i]=percentileOf(q,s.L[i]),a=s.A[i],b=s.B[i],C=Math.hypot(a,b),wn=1/(1+(C/NEUTRAL_C)**2);
+    bandWeights(p,w);
+    for(let k=0;k<K;k++){const wk=w[k];sw[k]+=wk;swn[k]+=wk*wn;na[k]+=wk*wn*a;nb[k]+=wk*wn*b;pa[k]+=wk*a;pb[k]+=wk*b;}
+  }
+  // Dominante = moyenne robuste (pondérée vers les neutres), un peu tirée vers la moyenne brute
+  const cast=[];for(let k=0;k<K;k++){
+    const ma=sw[k]?pa[k]/sw[k]:0,mb=sw[k]?pb[k]/sw[k]:0,ra=swn[k]>1e-6?na[k]/swn[k]:ma,rb=swn[k]>1e-6?nb[k]/swn[k]:mb;
+    cast.push([ra*0.75+ma*0.25,rb*0.75+mb*0.25]);
+  }
+  const sv=new Float64Array(K);
+  for(let i=0;i<n;i++){
+    bandWeights(P[i],w);
+    for(let k=0;k<K;k++){const da=s.A[i]-cast[k][0],db=s.B[i]-cast[k][1];sv[k]+=w[k]*(da*da+db*db);}
+  }
+  const spread=[];for(let k=0;k<K;k++)spread.push(Math.sqrt(sw[k]?sv[k]/sw[k]:0));
+  let cm=0;for(let i=0;i<n;i++)cm+=Math.hypot(s.A[i],s.B[i]);
+  return {q,cast,spread,n,meanC:cm/n};
+}
+
+// ---------- Spline monotone (Fritsch–Carlson) ----------
+function monotoneCubic(xs,ys){
+  const n=xs.length,d=[],m=new Array(n);
+  for(let i=0;i<n-1;i++)d[i]=(ys[i+1]-ys[i])/(xs[i+1]-xs[i]);
+  m[0]=d[0];m[n-1]=d[n-2];
+  for(let i=1;i<n-1;i++)m[i]=d[i-1]*d[i]<=0?0:(d[i-1]+d[i])/2;
+  for(let i=0;i<n-1;i++){
+    if(d[i]===0){m[i]=m[i+1]=0;continue;}
+    const a=m[i]/d[i],b=m[i+1]/d[i],h=a*a+b*b;
+    if(h>9){const t=3/Math.sqrt(h);m[i]=t*a*d[i];m[i+1]=t*b*d[i];}
+  }
+  return x=>{
+    if(x<=xs[0])return ys[0]+(x-xs[0])*m[0];
+    if(x>=xs[n-1])return ys[n-1]+(x-xs[n-1])*m[n-1];
+    let i=0;while(i<n-2&&x>xs[i+1])i++;
+    const h=xs[i+1]-xs[i],t=(x-xs[i])/h,t2=t*t,t3=t2*t;
+    return (2*t3-3*t2+1)*ys[i]+(t3-2*t2+t)*h*m[i]+(-2*t3+3*t2)*ys[i+1]+(t3-t2)*h*m[i+1];
   };
+}
+
+// ---------- Courbe de tonalité rush -> référence ----------
+const TONE_ANCHORS=[0.005,0.02,0.07,0.17,0.33,0.5,0.67,0.83,0.93,0.98,0.995];
+const TONE_N=1024;
+function buildToneCurve(src,ref){
+  const xs=[],ys=[];
+  for(const p of TONE_ANCHORS){
+    const x=quant(src.q,p),y=quant(ref.q,p);
+    if(xs.length&&x-xs[xs.length-1]<0.012)continue;
+    xs.push(x);ys.push(y);
+  }
+  // pentes bornées : évite les courbes « cassées » quand les contenus diffèrent
+  const SMIN=0.2,SMAX=4;
+  for(let i=1;i<xs.length;i++){const dx=xs[i]-xs[i-1];ys[i]=clamp(ys[i],ys[i-1]+SMIN*dx,ys[i-1]+SMAX*dx);}
+  if(xs.length<2){xs.splice(0,xs.length,0,1);ys.splice(0,ys.length,0,1);}
+  // extrémités : prolonge les noirs/blancs avec une pente modérée (préserve fade ou crush de la réf)
+  if(xs[0]>0.002){const s0=clamp((ys[1]-ys[0])/(xs[1]-xs[0]),0.3,2);xs.unshift(0);ys.unshift(clamp(ys[0]-xs[1]*s0,0,ys[0]));}
+  const N=xs.length;
+  if(xs[N-1]<0.998){const s1=clamp((ys[N-1]-ys[N-2])/(xs[N-1]-xs[N-2]),0.3,2);ys.push(clamp(ys[N-1]+(1-xs[N-1])*s1,ys[N-1],1));xs.push(1);}
+  const f=monotoneCubic(xs,ys),t=new Float32Array(TONE_N+1);
+  for(let i=0;i<=TONE_N;i++)t[i]=clamp(f(i/TONE_N),0,1);
+  for(let i=1;i<=TONE_N;i++)t[i]=Math.max(t[i],t[i-1]);
+  return t;
+}
+function applyCurve(t,x){const v=clamp(x,0,1)*TONE_N,i=Math.min(Math.floor(v),TONE_N-1),f=v-i;return t[i]*(1-f)+t[i+1]*f;}
+
+function rebuildMatch(){
+  match=(refModel&&srcModel)?{ref:refModel,src:srcModel,tone:buildToneCurve(srcModel,refModel),pivot:quant(refModel.q,0.5)}:null;
+}
+
+// ---------- Réglages ----------
+const CTL_DEFAULTS={intensity:100,matchLum:100,matchCol:100,sat:100,con:100,warm:0,tint:0,crush:50,zSh:0,zShW:0,zMd:0,zMdW:0,zHi:0,zHiW:0};
+const CTL_IDS=Object.keys(CTL_DEFAULTS);
+function readParams(){const p={};CTL_IDS.forEach(id=>p[id]=+$(id).value);return p;}
+
+// ---------- Transformation complète d'une couleur (sRGB code -> sRGB code) ----------
+function makeMapper(m,P){
+  const w=new Float64Array(BANDS.length);
+  const kLum=P.matchLum/100,kCol=P.matchCol/100,mix=P.intensity/100,sat=P.sat/100,con=P.con/100;
+  const crush=(P.crush-50)/50,warm=P.warm/100,tint=P.tint/100;
+  const zL=[P.zSh,P.zMd,P.zHi].map(v=>v/100),zW=[P.zShW,P.zMdW,P.zHiW].map(v=>v/100);
+  return (r,g,b)=>{
+    const o=srgb2ok(r,g,b),L0=o[0],a0=o[1],b0=o[2];
+    let L=L0,a=a0,bb=b0;
+    if(m){
+      // 1. luminance
+      L=L0+(applyCurve(m.tone,L0)-L0)*kLum;
+      // 2. couleur par bande tonale (position = percentile du pixel dans le rush)
+      bandWeights(percentileOf(m.src.q,L0),w);
+      let sa=0,sb=0,ra=0,rb=0,k=0;
+      for(let i=0;i<BANDS.length;i++){
+        sa+=w[i]*m.src.cast[i][0];sb+=w[i]*m.src.cast[i][1];
+        ra+=w[i]*m.ref.cast[i][0];rb+=w[i]*m.ref.cast[i][1];
+        k+=w[i]*clamp(m.ref.spread[i]/Math.max(m.src.spread[i],0.004),0.35,2.5);
+      }
+      const fa=(a0-sa)*k+ra,fb=(b0-sb)*k+rb;
+      a=a0+(fa-a0)*kCol;bb=b0+(fb-b0)*kCol;
+    }
+    // 3. trims manuels
+    const pivot=m?m.pivot:0.5;
+    L=pivot+(L-pivot)*con;
+    if(crush>=0)L-=crush*0.07*Math.pow(clamp(1-L/0.45,0,1),2);
+    else L+=-crush*0.06*Math.pow(clamp(1-L/0.6,0,1),2);
+    const wSh=Math.pow(clamp(1-L/0.5,0,1),2),wHi=Math.pow(clamp((L-0.5)/0.5,0,1),2),wMd=1-wSh-wHi,zw=[wSh,wMd,wHi];
+    let zb=0;for(let i=0;i<3;i++){L+=0.08*zL[i]*zw[i];zb+=zW[i]*zw[i];}
+    a*=sat;bb*=sat;
+    bb+=0.03*(warm+zb);a+=0.006*(warm+zb)+0.025*tint;
+    // 4. intensité globale
+    L=L0+(L-L0)*mix;a=a0+(a-a0)*mix;bb=b0+(bb-b0)*mix;
+    return ok2srgbMapped(L,a,bb);
+  };
+}
+
+// ---------- Génération de la LUT 3D ----------
+function generateLUT(size){
+  if(!match){lut=null;return;}
+  const n=Math.max(2,Math.round(size||33)),data=new Float32Array(n*n*n*3),f=makeMapper(match,readParams());
+  let k=0;
+  // convention .cube : R varie le plus vite, puis G, puis B
+  for(let bi=0;bi<n;bi++)for(let gi=0;gi<n;gi++)for(let ri=0;ri<n;ri++){
+    const q=f(ri/(n-1),gi/(n-1),bi/(n-1));
+    data[k++]=q[0];data[k++]=q[1];data[k++]=q[2];
+  }
+  lut={size:n,data};
+}
+let regenPending=false;
+function scheduleRegen(){
+  if(regenPending)return;regenPending=true;
+  requestAnimationFrame(()=>{regenPending=false;generateLUT(+$('lutSize').value);if(prevImg)renderPrev(prevImg);});
+}
+function refreshSource(){
+  const list=[prevImg,...rushImgs.map(x=>x.img)].filter(Boolean);
+  srcModel=list.length?buildModel(imagesSamples(list,roiState.prev)):null;
+  rebuildMatch();showStats();scheduleRegen();
+}
+function refreshAnalysis(){
+  if(!refImg)return;
+  refModel=buildModel(imagesSamples([refImg],roiState.ref));
+  showPalette(refImg,roiState.ref);
+  rebuildMatch();showStats();scheduleRegen();
+}
+
+// ---------- Interpolation tétraédrique de la LUT (valeurs code) ----------
+function lutTetra(r,g,b){
+  const S=lut.size,D=lut.data;
+  const x=clamp(r,0,1)*(S-1),y=clamp(g,0,1)*(S-1),z=clamp(b,0,1)*(S-1);
+  const i0=Math.min(Math.floor(x),S-2),j0=Math.min(Math.floor(y),S-2),k0=Math.min(Math.floor(z),S-2);
+  const fx=x-i0,fy=y-j0,fz=z-k0;
+  const idx=(i,j,k)=>(k*S*S+j*S+i)*3;
+  const c000=idx(i0,j0,k0),c100=idx(i0+1,j0,k0),c010=idx(i0,j0+1,k0),c110=idx(i0+1,j0+1,k0);
+  const c001=idx(i0,j0,k0+1),c101=idx(i0+1,j0,k0+1),c011=idx(i0,j0+1,k0+1),c111=idx(i0+1,j0+1,k0+1);
+  let w0,w1,w2,w3,A,B;
+  if(fx>fy){
+    if(fy>fz){w0=1-fx;w1=fx-fy;w2=fy-fz;w3=fz;A=c100;B=c110;}
+    else if(fx>fz){w0=1-fx;w1=fx-fz;w2=fz-fy;w3=fy;A=c100;B=c101;}
+    else{w0=1-fz;w1=fz-fx;w2=fx-fy;w3=fy;A=c001;B=c101;}
+  }else{
+    if(fz>fy){w0=1-fz;w1=fz-fy;w2=fy-fx;w3=fx;A=c001;B=c011;}
+    else if(fz>fx){w0=1-fy;w1=fy-fz;w2=fz-fx;w3=fx;A=c010;B=c011;}
+    else{w0=1-fy;w1=fy-fx;w2=fx-fz;w3=fz;A=c010;B=c110;}
+  }
+  return [w0*D[c000]+w1*D[A]+w2*D[B]+w3*D[c111],
+          w0*D[c000+1]+w1*D[A+1]+w2*D[B+1]+w3*D[c111+1],
+          w0*D[c000+2]+w1*D[A+2]+w2*D[B+2]+w3*D[c111+2]];
 }
 
 // ---------- Palette dominante (k-means, 6 couleurs) ----------
@@ -242,12 +360,12 @@ function buildPalette(img,k,roi){
   const {data:d,n}=sampleImg(img,roi),pts=[],seen=new Set();
   for(let i=0;i<n;i+=7){
     const a=d[i*4+3],r=d[i*4],g=d[i*4+1],b=d[i*4+2];
-    if(a<=0||![r,g,b].every(Number.isFinite))continue;
+    if(a<=0)continue;
     const key=r+','+g+','+b;if(seen.has(key))continue;seen.add(key);pts.push([r,g,b]);
   }
-  if(!pts.length)throw new Error('Aucun pixel valide pour la palette');
+  if(!pts.length)return [];
   k=Math.min(k,pts.length);
-  let cent=pts.slice(0,k).map(p=>p.slice());
+  let cent=[];for(let c=0;c<k;c++)cent.push(pts[Math.floor((c+0.5)/k*pts.length)].slice());
   const assign=new Array(pts.length).fill(0);
   for(let it=0;it<10;it++){
     for(let i=0;i<pts.length;i++){let bi=0,bd=Infinity;for(let c=0;c<k;c++){const dr=pts[i][0]-cent[c][0],dg=pts[i][1]-cent[c][1],db=pts[i][2]-cent[c][2],dist=dr*dr+dg*dg+db*db;if(dist<bd){bd=dist;bi=c;}}assign[i]=bi;}
@@ -258,7 +376,6 @@ function buildPalette(img,k,roi){
   const counts=new Array(k).fill(0);for(const a of assign)counts[a]++;
   return cent.map((c,i)=>({hex:'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join(''),pct:counts[i]/pts.length*100})).sort((a,b)=>b.pct-a.pct);
 }
-
 function showPalette(img,roi){
   const pal=buildPalette(img,6,roi);
   const el=$('palette');
@@ -266,179 +383,68 @@ function showPalette(img,roi){
   el.style.display='flex';$('paletteTitle').style.display='block';
 }
 
+// ---------- Analyse affichée ----------
 function fmt(x,d=3){return x.toFixed(d);}
-function showStats(s){
-  $('statsBox').style.display='block';
+function castLabel(c){
+  const C=Math.hypot(c[0],c[1]);if(C<0.006)return 'neutre';
+  const h=(Math.atan2(c[1],c[0])*180/Math.PI+360)%360;
+  const name=h<35?'magenta-rouge':h<75?'orange':h<110?'jaune':h<160?'vert':h<220?'cyan / teal':h<290?'bleu':h<330?'violet':'magenta';
+  return name+' '+fmt(C*100,1);
+}
+function showStats(){
+  const r=refModel,s=srcModel;if(!r&&!s)return;
+  $('statsBox').style.display='';
+  const col=(m,f)=>m?f(m):'—';
   const rows=[
-    ['Noirs P1 / P5',fmt(s.p1)+' / '+fmt(s.p5)],
-    ['P25 / P50 / P75',fmt(s.p25)+' / '+fmt(s.p50)+' / '+fmt(s.p75)],
-    ['P95 / P99',fmt(s.p95)+' / '+fmt(s.p99)],
-    ['Saturation moyenne',fmt(s.sat*100,1)+' %'],
-    ['Chaleur ombres (R/B)',fmt(s.warmLo,2)],
-    ['Chaleur hautes lumières (R/B)',fmt(s.warmHi,2)],
-    ['Dynamic range P5→P95',fmt(Math.log2(Math.max(s.p95,1e-6)/Math.max(s.p5,1e-6)),1)+' stops']
+    ['Noirs P2 · L',m=>fmt(quant(m.q,.02)*100,1)],
+    ['Médiane · L',m=>fmt(quant(m.q,.5)*100,1)],
+    ['Blancs P98 · L',m=>fmt(quant(m.q,.98)*100,1)],
+    ['Contraste P2→P98',m=>fmt((quant(m.q,.98)-quant(m.q,.02))*100,1)],
+    ['Chroma moyen',m=>fmt(m.meanC*100,1)],
+    ['Dominante ombres',m=>castLabel(m.cast[1])],
+    ['Dominante tons moyens',m=>castLabel(m.cast[2])],
+    ['Dominante hautes lumières',m=>castLabel(m.cast[3])]
   ];
-  $('statsBody').innerHTML=rows.map(r=>`<div class="statrow"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+  $('statsBody').innerHTML='<div class="statrow statrow--head"><span></span><b>Réf</b><b>Rush</b></div>'+rows.map(x=>`<div class="statrow"><span>${x[0]}</span><b>${col(r,x[1])}</b><b>${col(s,x[1])}</b></div>`).join('');
 }
 
-// ---------- Courbe de tonalité monotone (Hermite) ----------
-function buildToneLUT(s,crushAmt,conAmt){
-  const mid=0.42;
-  const inA=[0,0.0625,0.25,0.5,0.75,1.0];
-  let outA=[
-    Math.max(s.p1*(1-crushAmt*0.6),0),
-    Math.max(s.p5*(1-crushAmt*0.35),0),
-    s.p25,s.p50,s.p75,
-    Math.min(s.p99,1)
-  ];
-  outA=outA.map(v=>clamp(mid+(v-s.p50)*conAmt,0,1));
-  outA[3]=mid;
-  for(let i=1;i<outA.length;i++)outA[i]=Math.max(outA[i],outA[i-1]+0.001);
-  const N=4096,lutT=new Float32Array(N);
-  const slope=(outA[1]-outA[0])/(inA[1]-inA[0]);
-  for(let i=0;i<N;i++){
-    const x=i/(N-1)*inA[inA.length-1];
-    let k=0;while(k<inA.length-2&&x>inA[k+1])k++;
-    const t=clamp((x-inA[k])/(inA[k+1]-inA[k]),0,1);
-    const m0=k>0?(outA[k]-outA[k-1])/(inA[k]-inA[k-1]):slope;
-    const m1=(outA[k+1]-outA[k])/(inA[k+1]-inA[k]);
-    const mm=clamp((m0+m1)/2,0,3*Math.min(Math.abs(m0),Math.abs(m1))||(m0+m1)/2);
-    const h=inA[k+1]-inA[k];
-    const h00=(1+2*t)*(1-t)*(1-t),h10=t*(1-t)*(1-t),h01=t*t*(3-2*t),h11=t*t*(t-1);
-    lutT[i]=clamp(h00*outA[k]+h10*h*m0+h01*outA[k+1]+h11*h*m1,0,1);
-  }
-  return lutT;
+// ---------- Score : écart réf ↔ image, par zone tonale ----------
+// Compare les couleurs moyennes des ombres / tons moyens / hautes lumières (ΔE2000).
+function zoneMeans(s){
+  const sorted=Float32Array.from(s.L).sort(),n=s.n;
+  const ranges=[[0,.2],[.4,.6],[.8,1]].map(([a,b])=>[sorted[Math.floor(a*(n-1))],sorted[Math.floor(b*(n-1))]]);
+  return ranges.map(([lo,hi])=>{let c=0,L=0,A=0,B=0;for(let i=0;i<n;i++){const v=s.L[i];if(v>=lo&&v<=hi){L+=v;A+=s.A[i];B+=s.B[i];c++;}}return c?[L/c,A/c,B/c]:[0,0,0];});
 }
-function applyTone(lutT,v){
-  const N=lutT.length-1,x=clamp(v,0,1)*N,i=Math.min(Math.floor(x),N-1),f=x-i;
-  return lutT[i]*(1-f)+lutT[i+1]*f;
+function matchScore(a,b){
+  const za=zoneMeans(a),zb=zoneMeans(b);let s=0;
+  for(let i=0;i<3;i++){const x=ok2lab(za[i]),y=ok2lab(zb[i]);s+=deltaE2000(x[0],x[1],x[2],y[0],y[1],y[2]);}
+  return s/3;
 }
-
-// ---------- Zones ----------
-function getZoneVals(){
-  return {
-    sh:(+$('zSh').value)/100, shW:(+$('zShW').value)/100,
-    md:(+$('zMd').value)/100, mdW:(+$('zMdW').value)/100,
-    hi:(+$('zHi').value)/100, hiW:(+$('zHiW').value)/100
-  };
-}
-
-// ---------- Génération de la LUT 3D ----------
-function generateLUT(size){
-  // Always snapshot the current reference and controls at generation time.  The
-  // preview must never retain a LUT from a previous reference/auto-match.
-  const reference=refStats;
-  if(!reference)return;
-  const n=Math.max(2,Math.round(size||17)), data=new Float32Array(n*n*n*3),
-    p={intensity:+$('intensity').value,sat:+$('sat').value,con:+$('con').value,warm:+$('warm').value,crush:+$('crush').value,
-       zSh:+$('zSh').value,zShW:+$('zShW').value,zMd:+$('zMd').value,
-       zMdW:+$('zMdW').value,zHi:+$('zHi').value,zHiW:+$('zHiW').value};
-  function correct(r,g,b){
-    // Normalize log input before any creative grade operation.
-    r=normalizeLogInput(r);g=normalizeLogInput(g);b=normalizeLogInput(b);
-    if(reference.transfer){
-      const ok=linRgb2oklab(r,g,b), matched=applyOKLabTransfer(ok,reference.transfer), rgb=oklab2linRgb(matched[0],matched[1],matched[2]);
-      r=clamp(rgb[0],0,1);g=clamp(rgb[1],0,1);b=clamp(rgb[2],0,1);
-    }
-    // The reference analysis is the source of the automatic look. Previously this
-    // function only read UI controls, so changing the reference could not change
-    // the generated LUT. Keep manual controls additive so presets still work.
-    const rs=reference;
-    const refWarm=clamp((rs.meanR-rs.meanB)*1.5,-.25,.25);
-    const refContrast=clamp((rs.p95-rs.p5)/.73,.65,1.35);
-    const refSat=clamp(rs.sat/.5,.65,1.35);
-    const sat=clamp((p.sat/100)*refSat,.05,2.5), con=clamp((p.con/100)*refContrast,.25,2.5), warm=p.warm/100+refWarm, lum=.2126*r+.7152*g+.0722*b;
-    let R=(r-.5)*con+.5,G=(g-.5)*con+.5,B=(b-.5)*con+.5;
-    const z=lum<.33?p.zSh/100:lum>.66?p.zHi/100:p.zMd/100;
-    const zw=lum<.33?p.zShW/100:lum>.66?p.zHiW/100:p.zMdW/100;
-    const ex=Math.pow(2,z*.6); R*=ex; G*=ex; B*=ex;
-    const y=.2126*R+.7152*G+.0722*B;
-    R=y+(R-y)*sat; G=y+(G-y)*sat; B=y+(B-y)*sat;
-    // Apply the black-density control in the same linear-light domain as the LUT.
-    // It was previously exposed and wired to regeneration, but never consumed.
-    const crush=(p.crush-50)/50;
-    if(crush>=0){R*=1-.35*crush;G*=1-.35*crush;B*=1-.35*crush;}
-    else{const lift=-crush*.25;R+= (1-R)*lift;G+=(1-G)*lift;B+=(1-B)*lift;}
-    const ww=1+warm*.5+zw*.08;
-    const graded=[clamp(R*ww,0,1),clamp(G,0,1),clamp(B/ww,0,1)];
-    const mix=clamp(p.intensity/100,0,1);
-    return [r+(graded[0]-r)*mix,g+(graded[1]-g)*mix,b+(graded[2]-b)*mix];
-  }
-  let k=0;
-  for(let bi=0;bi<n;bi++)for(let gi=0;gi<n;gi++)for(let ri=0;ri<n;ri++){
-    const q=correct(srgb2lin(ri/(n-1)),srgb2lin(gi/(n-1)),srgb2lin(bi/(n-1)));
-    data[k++]=q[0];data[k++]=q[1];data[k++]=q[2];
-  }
-  lut={size:n,data}; if(prevImg)renderPrev(prevImg);
-}
-// ---------- Interpolation tétraédrique de la LUT ----------
-function lutTetra(r,g,b){
-  const S=lut.size,D=lut.data;
-  const x=clamp(r,0,1)*(S-1),y=clamp(g,0,1)*(S-1),z=clamp(b,0,1)*(S-1);
-  const i0=Math.min(Math.floor(x),S-2),j0=Math.min(Math.floor(y),S-2),k0=Math.min(Math.floor(z),S-2);
-  const fx=x-i0,fy=y-j0,fz=z-k0;
-  const idx=(i,j,k)=>(k*S*S+j*S+i)*3;
-  const c000=idx(i0,j0,k0),   c100=idx(i0+1,j0,k0),   c010=idx(i0,j0+1,k0),   c110=idx(i0+1,j0+1,k0);
-  const c001=idx(i0,j0,k0+1), c101=idx(i0+1,j0,k0+1), c011=idx(i0,j0+1,k0+1),c111=idx(i0+1,j0+1,k0+1);
-  let out=[0,0,0];
-  const acc=(w,v0,v1,v2)=>{out[0]+=w*v0;out[1]+=w*v1;out[2]+=w*v2;};
-  if(fx>fy){
-    if(fy>fz){acc(fx,D[c100],D[c100+1],D[c100+2]);acc(fy,D[c110],D[c110+1],D[c110+2]);acc(fz,D[c111],D[c111+1],D[c111+2]);}
-    else if(fx>fz){acc(fx,D[c100],D[c100+1],D[c100+2]);acc(fz,D[c101],D[c101+1],D[c101+2]);acc(fy,D[c111],D[c111+1],D[c111+2]);}
-    else{acc(fz,D[c001],D[c001+1],D[c001+2]);acc(fx,D[c101],D[c101+1],D[c101+2]);acc(fy,D[c111],D[c111+1],D[c111+2]);}
-  }else{
-    if(fz>fy){acc(fz,D[c001],D[c001+1],D[c001+2]);acc(fy,D[c011],D[c011+1],D[c011+2]);acc(fx,D[c111],D[c111+1],D[c111+2]);}
-    else if(fx>fz){acc(fy,D[c010],D[c010+1],D[c010+2]);acc(fx,D[c110],D[c110+1],D[c110+2]);acc(fz,D[c111],D[c111+1],D[c111+2]);}
-    else{acc(fy,D[c010],D[c010+1],D[c010+2]);acc(fz,D[c011],D[c011+1],D[c011+2]);acc(fx,D[c111],D[c111+1],D[c111+2]);}
-  }
-  const base=idx(i0,j0,k0);
-  out[0]=(1-fx-fy-fz)*D[base]+out[0];
-  out[1]=(1-fx-fy-fz)*D[base+1]+out[1];
-  out[2]=(1-fx-fy-fz)*D[base+2]+out[2];
-  return [clamp(out[0],0,1),clamp(out[1],0,1),clamp(out[2],0,1)];
-}
-
-// ---------- ROI dessinable, persistante et partagée par l’analyse ----------
-const ROI_KEY='cgt_match_roi_v1';
-let roiState={ref:null,prev:null},roiMode=false,roiDrag=null;
-function loadROI(){try{const v=JSON.parse(localStorage.getItem(ROI_KEY));if(v&&typeof v==='object')roiState={ref:v.ref||null,prev:v.prev||null};}catch(e){}}
-function saveROI(){try{localStorage.setItem(ROI_KEY,JSON.stringify(roiState));}catch(e){}}
-function roiLabel(){const r=roiState.prev||roiState.ref; $('roiStatus').textContent=roiMode?'Dessinez une zone sur l’image active · double-clic pour supprimer':(r?'ROI active · '+Math.round(r.w*100)+'×'+Math.round(r.h*100)+'%':'Mode inactif · ROI image entière');}
-function drawROI(which){const r=roiState[which],el=$('roiOverlay'+(which==='ref'?'Ref':'Prev'));if(!el)return;el.style.display=r?'block':'none';if(r){el.style.setProperty('--rx',(r.x*100)+'%');el.style.setProperty('--ry',(r.y*100)+'%');el.style.setProperty('--rx2',((r.x+r.w)*100)+'%');el.style.setProperty('--ry2',((r.y+r.h)*100)+'%');}}
-function refreshAnalysis(){if(!refImg)return;refStats=analyze(refImg,roiState.ref);showStats(refStats);showPalette(refImg,roiState.ref);if(refStats)generateLUT(+$('lutSize').value);}
-function setROI(which,r){roiState[which]=r;drawROI(which);saveROI();roiLabel();if(which==='ref'&&refImg)refreshAnalysis();if(which==='prev'&&prevImg&&lut)renderPrev(prevImg);}
-function bindROI(which,stageId){const stage=$(stageId);stage.addEventListener('pointerdown',e=>{if(!roiMode)return;e.preventDefault();const b=stage.getBoundingClientRect();roiDrag={which,x0:clamp((e.clientX-b.left)/b.width,0,1),y0:clamp((e.clientY-b.top)/b.height,0,1)};stage.setPointerCapture(e.pointerId);});stage.addEventListener('pointermove',e=>{if(!roiDrag||roiDrag.which!==which)return;const b=stage.getBoundingClientRect(),x=clamp((e.clientX-b.left)/b.width,0,1),y=clamp((e.clientY-b.top)/b.height,0,1);const x0=Math.min(roiDrag.x0,x),y0=Math.min(roiDrag.y0,y),w=Math.max(.01,Math.abs(x-roiDrag.x0)),h=Math.max(.01,Math.abs(y-roiDrag.y0));setROI(which,{x:x0,y:y0,w:Math.min(w,1-x0),h:Math.min(h,1-y0)});});stage.addEventListener('pointerup',()=>{roiDrag=null;});stage.addEventListener('click',e=>{if(roiMode)e.stopPropagation();});stage.addEventListener('dblclick',e=>{if(roiMode){e.preventDefault();setROI(which,null);}});}
-function toggleROIMode(){roiMode=!roiMode;document.body.classList.toggle('roi-mode',roiMode);$('btnRoi').classList.toggle('active',roiMode);roiLabel();}
-
-
-// ---------- Lab moyen de la référence (pour ΔE) ----------
-function refMeanLab(){
-  if(!refStats)return null;
-  return rgb2lab(refStats.meanR,refStats.meanG,refStats.meanB);
-}
-
-// ---------- Affichage du score ΔE ----------
-function showDE(de){
+let refSamplesCache=null;
+function showDE(before,after){
   const box=$('deBox');
   box.classList.remove('descore--ok','descore--warn','descore--bad');
   let cls,txt;
-  if(de<2){cls='descore--ok';txt='<b>ΔE '+fmt(de,1)+' — Excellent match 🟢</b><br>Le look gradé est quasi imperceptiblement différent de la référence. Tu peux exporter la LUT en confiance.';}
-  else if(de<5){cls='descore--warn';txt='<b>ΔE '+fmt(de,1)+' — Bon match 🟡</b><br>Différences légères visibles côte à côte. Ajuste saturation / chaleur / zones pour affiner.';}
-  else{cls='descore--bad';txt='<b>ΔE '+fmt(de,1)+' — Match approximatif 🔴</b><br>Le look s\'écarte nettement de la référence. Vérifie que la frame de rush est comparable à la référence (exposition, contenu).';}
+  const head='<b>ΔE '+fmt(after,1)+' — ';
+  const tail='</b><br>Écart moyen réf ↔ rush gradé (ombres, tons moyens, hautes lumières). Avant grading : ΔE '+fmt(before,1)+'.';
+  if(after<3){cls='descore--ok';txt=head+'Très proche de la référence 🟢'+tail;}
+  else if(after<6){cls='descore--warn';txt=head+'Proche, affine avec les zones 🟡'+tail;}
+  else{cls='descore--bad';txt=head+'Écart encore net 🔴'+tail+' Si les contenus sont très différents, utilise la zone de match pour cibler des éléments comparables.';}
   box.classList.add(cls);
-  $('deNum').textContent=fmt(de,1);
+  $('deNum').textContent=fmt(after,1);
   $('deTxt').innerHTML=txt;
 }
 
 function syncLabels(){
-  $('vInt').textContent=$('intensity').value+'%';
-  $('vSat').textContent=$('sat').value==100?'auto':$('sat').value+'%';
-  $('vWarm').textContent=$('warm').value==0?'auto':$('warm').value;
-  $('vCrush').textContent=$('crush').value==50?'auto':$('crush').value;
-  $('vCon').textContent=$('con').value==100?'auto':$('con').value+'%';
-  $('vWskin').textContent=(+$('wSkin').value).toFixed(1);
-  $('vWdetail').textContent=(+$('wDetail').value).toFixed(1);
-  $('vWextreme').textContent=(+$('wExtreme').value).toFixed(2);
+  const pct=id=>$(id).value+'%';
+  $('vInt').textContent=pct('intensity');
+  $('vLum').textContent=pct('matchLum');
+  $('vCol').textContent=pct('matchCol');
+  $('vSat').textContent=pct('sat');
+  $('vCon').textContent=pct('con');
+  $('vWarm').textContent=$('warm').value;
+  $('vTint').textContent=$('tint').value;
+  $('vCrush').textContent=$('crush').value==50?'0':String($('crush').value-50);
   ['Sh','Md','Hi'].forEach(z=>{
     $('vZ'+z).textContent=(+$('z'+z).value/100).toFixed(2);
     $('vZ'+z+'W').textContent=$('z'+z+'W').value;
@@ -447,47 +453,43 @@ function syncLabels(){
 
 // ---------- Scopes : vectorscope + waveform RGB ----------
 function drawScopes(d){
-  const W=128,H=128; // échantillonnage réduit pour la perf
+  const W=128,H=128;
   const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;
   const tctx=tmp.getContext('2d',{willReadFrequently:true});
   tctx.drawImage(d,0,0,W,H);
   const px=tctx.getImageData(0,0,W,H).data;
 
-  // --- Vectorscope (U/V sur grille Rec.709) ---
   const cv=$('cvVector'),ctx=cv.getContext('2d');
   const S=cv.width,cx=S/2,cy=S/2,rad=S/2-8;
   ctx.fillStyle='#101013';ctx.fillRect(0,0,S,S);
   ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;
   ctx.beginPath();ctx.arc(cx,cy,rad,0,2*Math.PI);ctx.stroke();
   ctx.beginPath();ctx.moveTo(cx-rad,cy);ctx.lineTo(cx+rad,cy);ctx.moveTo(cx,cy-rad);ctx.lineTo(cx,cy+rad);ctx.stroke();
-  // cible skin-tone (ligne I)
   ctx.strokeStyle='rgba(94,194,106,.45)';
   ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+rad*Math.cos(123*Math.PI/180),cy-rad*Math.sin(123*Math.PI/180));ctx.stroke();
   const img=ctx.getImageData(0,0,S,S),dd=img.data;
-  for(let i=0;i<px.length;i+=16){
+  for(let i=0;i<px.length;i+=4){
     const r=px[i]/255,g=px[i+1]/255,b=px[i+2]/255;
     const u=-0.147*r-0.289*g+0.436*b, v=0.615*r-0.515*g-0.100*b;
     const x=Math.round(cx+u*rad*2.1), y=Math.round(cy-v*rad*2.1);
     if(x<0||x>=S||y<0||y>=S)continue;
     const o=(y*S+x)*4;
-    dd[o]=Math.min(255,dd[o]+160);dd[o+1]=Math.min(255,dd[o+1]+150);dd[o+2]=Math.min(255,dd[o+2]+120);dd[o+3]=255;
+    dd[o]=Math.min(255,dd[o]+60);dd[o+1]=Math.min(255,dd[o+1]+55);dd[o+2]=Math.min(255,dd[o+2]+45);dd[o+3]=255;
   }
   ctx.putImageData(img,0,0);
 
-  // --- Waveform RGB ---
   const cw=$('cvWave'),wc=cw.getContext('2d');
   const WS=cw.width,HS=cw.height;
   wc.fillStyle='#101013';wc.fillRect(0,0,WS,HS);
   wc.strokeStyle='rgba(255,255,255,.1)';
   for(let q=1;q<4;q++){wc.beginPath();wc.moveTo(0,HS*q/4);wc.lineTo(WS,HS*q/4);wc.stroke();}
   const wimg=wc.getImageData(0,0,WS,HS),wd=wimg.data;
-  const colOff=[0,1,2];
   for(let i=0;i<px.length;i+=4){
-    const x=Math.round((i/4)%W)/W*WS;
+    const x=Math.min(WS-1,Math.floor(((i/4)%W)/W*WS));
     for(let c=0;c<3;c++){
-      const y=Math.round(HS-1-clamp(px[i+c],0,255)/255*(HS-1));
-      const o=(y*WS+x)*4+colOff[c];
-      wd[o]=Math.min(255,wd[o]+170);wd[o+3]=255;
+      const y=Math.round(HS-1-px[i+c]/255*(HS-1));
+      const o=(y*WS+x)*4+c;
+      wd[o]=Math.min(255,wd[o]+70);wd[o+3]=255;
     }
   }
   wc.putImageData(wimg,0,0);
@@ -496,7 +498,6 @@ function drawScopes(d){
 
 // ---------- Rendu de la prévisualisation ----------
 function renderPrev(img){
-  if(!lut)return;
   const cv=$('cvPrev');
   const scale=Math.min(1,1280/img.width);
   cv.width=Math.max(1,Math.round(img.width*scale));
@@ -506,61 +507,65 @@ function renderPrev(img){
   if(before.src!==img.src)before.src=img.src;
   const ctx=cv.getContext('2d',{willReadFrequently:true});
   ctx.drawImage(img,0,0,cv.width,cv.height);
-  const id=ctx.getImageData(0,0,cv.width,cv.height);const d=id.data;
-  let sumDE=0,deCount=0;
-  const activeRoi=roiState.prev;
-  const rw=activeRoi||{x:0,y:0,w:1,h:1};
-  const roiX0=Math.floor(rw.x*cv.width),roiY0=Math.floor(rw.y*cv.height),roiX1=Math.ceil((rw.x+rw.w)*cv.width),roiY1=Math.ceil((rw.y+rw.h)*cv.height);
+  if(!lut)return;
+  const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data;
+  const raw=okSamples(d,4);
   for(let i=0;i<d.length;i+=4){
-    const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
-    // LUT generation is linear-light; convert the sRGB canvas samples in and
-    // convert the transformed result back before writing to the canvas.
-    const R0=lutTetra(srgb2lin(r),srgb2lin(g),srgb2lin(b));
-    d[i]=clamp(lin2srgb(R0[0]),0,1)*255;
-    d[i+1]=clamp(lin2srgb(R0[1]),0,1)*255;
-    d[i+2]=clamp(lin2srgb(R0[2]),0,1)*255;
-    const pix=i>>2,px=pix%cv.width,py=Math.floor(pix/cv.width);
-    if(px>=roiX0&&px<roiX1&&py>=roiY0&&py<roiY1&&(i>>2)%16===0&&d[i+3]>0&&[r,g,b].every(Number.isFinite)){
-      const lab1=rgb2lab(srgb2lin(r),srgb2lin(g),srgb2lin(b));
-      const lab2=rgb2lab(srgb2lin(R0[0]),srgb2lin(R0[1]),srgb2lin(R0[2]));
-      sumDE+=deltaE2000(lab1[0],lab1[1],lab1[2],lab2[0],lab2[1],lab2[2]);
-      deCount++;
-    }
+    const q=lutTetra(d[i]/255,d[i+1]/255,d[i+2]/255);
+    d[i]=q[0]*255+0.5;d[i+1]=q[1]*255+0.5;d[i+2]=q[2]*255+0.5;
   }
   ctx.putImageData(id,0,0);
-  if(deCount)showDE(sumDE/deCount);
-  drawScopes(img); // scopes sur l'image gradée
+  if(refImg){
+    const crop=c=>{const r=roiState.prev;if(!r)return c;const t=document.createElement('canvas');t.width=Math.max(1,Math.round(r.w*c.width));t.height=Math.max(1,Math.round(r.h*c.height));t.getContext('2d').drawImage(c,r.x*c.width,r.y*c.height,r.w*c.width,r.h*c.height,0,0,t.width,t.height);return t;};
+    if(!refSamplesCache)refSamplesCache=imagesSamples([refImg],roiState.ref);
+    const after=roiState.prev?okSamples(sampleImg(crop(cv)).data):okSamples(d,4);
+    const beforeS=roiState.prev?imagesSamples([img],roiState.prev):raw;
+    showDE(matchScore(refSamplesCache,beforeS),matchScore(refSamplesCache,after));
+  }
+  drawScopes(cv);
 }
+
+// ---------- ROI dessinable, persistante et partagée par l’analyse ----------
+const ROI_KEY='cgt_match_roi_v1';
+let roiState={ref:null,prev:null},roiMode=false,roiDrag=null;
+function loadROI(){try{const v=JSON.parse(localStorage.getItem(ROI_KEY));if(v&&typeof v==='object')roiState={ref:v.ref||null,prev:v.prev||null};}catch(e){}}
+function saveROI(){try{localStorage.setItem(ROI_KEY,JSON.stringify(roiState));}catch(e){}}
+function roiLabel(){const r=roiState.prev||roiState.ref; $('roiStatus').textContent=roiMode?'Dessinez une zone sur l’image active · double-clic pour supprimer':(r?'ROI active · '+Math.round(r.w*100)+'×'+Math.round(r.h*100)+'%':'Mode inactif · ROI image entière');}
+function drawROI(which){const r=roiState[which],el=$('roiOverlay'+(which==='ref'?'Ref':'Prev'));if(!el)return;el.style.display=r?'block':'none';if(r){el.style.setProperty('--rx',(r.x*100)+'%');el.style.setProperty('--ry',(r.y*100)+'%');el.style.setProperty('--rx2',((r.x+r.w)*100)+'%');el.style.setProperty('--ry2',((r.y+r.h)*100)+'%');}}
+let roiTimer=null;
+function setROI(which,r){roiState[which]=r;drawROI(which);saveROI();roiLabel();clearTimeout(roiTimer);roiTimer=setTimeout(()=>{if(which==='ref'){refSamplesCache=null;refreshAnalysis();}else refreshSource();},120);}
+function bindROI(which,stageId){const stage=$(stageId);stage.addEventListener('pointerdown',e=>{if(!roiMode)return;e.preventDefault();const b=stage.getBoundingClientRect();roiDrag={which,x0:clamp((e.clientX-b.left)/b.width,0,1),y0:clamp((e.clientY-b.top)/b.height,0,1)};stage.setPointerCapture(e.pointerId);});stage.addEventListener('pointermove',e=>{if(!roiDrag||roiDrag.which!==which)return;const b=stage.getBoundingClientRect(),x=clamp((e.clientX-b.left)/b.width,0,1),y=clamp((e.clientY-b.top)/b.height,0,1);const x0=Math.min(roiDrag.x0,x),y0=Math.min(roiDrag.y0,y),w=Math.max(.01,Math.abs(x-roiDrag.x0)),h=Math.max(.01,Math.abs(y-roiDrag.y0));setROI(which,{x:x0,y:y0,w:Math.min(w,1-x0),h:Math.min(h,1-y0)});});stage.addEventListener('pointerup',()=>{roiDrag=null;});stage.addEventListener('click',e=>{if(roiMode)e.stopPropagation();});stage.addEventListener('dblclick',e=>{if(roiMode){e.preventDefault();setROI(which,null);}});}
+function toggleROIMode(){roiMode=!roiMode;document.body.classList.toggle('roi-mode',roiMode);$('btnRoi').classList.toggle('active',roiMode);roiLabel();}
 
 // Slider avant/après
 (function(){
   const ba=$('baPrev');
   let dragging=false;
   const set=x=>{const r=ba.getBoundingClientRect();const pct=clamp((x-r.left)/r.width*100,0,100);ba.style.setProperty('--split',pct+'%');};
-  const start=e=>{dragging=true;set((e.touches?e.touches[0]:e).clientX);};
+  const start=e=>{if(roiMode)return;dragging=true;set((e.touches?e.touches[0]:e).clientX);};
   const move=e=>{if(!dragging)return;e.preventDefault();set((e.touches?e.touches[0]:e).clientX);};
   const end=()=>dragging=false;
   ba.addEventListener('mousedown',start);ba.addEventListener('touchstart',start,{passive:true});
+  ba.addEventListener('click',e=>e.stopPropagation());
   window.addEventListener('mousemove',move);window.addEventListener('touchmove',move,{passive:false});
   window.addEventListener('mouseup',end);window.addEventListener('touchend',end);
 })();
 
 // ---------- Export .cube ----------
 function download(){
-  if(!lut)return;
-  const S=lut.size;
-  let out='# Created with Colour Grade Tool v3.2\n# look derived from reference shot (linear-light percentile match, tetrahedral preview, CIEDE2000 scored)\nLUT_3D_SIZE '+S+'\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n\n';
-  const D=lut.data;
-  for(let i=0;i<D.length;i+=3){
-    out+=D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6)+'\n';
-  }
-  const blob=new Blob([out],{type:'text/plain'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='colour_grade_tool_look.cube';a.click();
+  if(!match){alert('Charge une référence ET une frame de rush pour générer la LUT.');return;}
+  generateLUT(+$('lutSize').value);
+  const S=lut.size,D=lut.data,lines=[];
+  lines.push('TITLE "Colour Grade Tool match"','# Created with Colour Grade Tool v4','# OKLab tone + per-zone colour match, sRGB/Rec.709 display-referred in & out','LUT_3D_SIZE '+S,'DOMAIN_MIN 0.0 0.0 0.0','DOMAIN_MAX 1.0 1.0 1.0','');
+  for(let i=0;i<D.length;i+=3)lines.push(D[i].toFixed(6)+' '+D[i+1].toFixed(6)+' '+D[i+2].toFixed(6));
+  const blob=new Blob([lines.join('\n')+'\n'],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='colour_grade_tool_match_'+S+'.cube';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
 // ---------- Presets localStorage ----------
-const PKEY='cgt_presets_v31';
-const CTL_IDS=['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW','wSkin','wDetail','wExtreme'];
+const PKEY='cgt_presets_v4';
+function setControls(c){CTL_IDS.forEach(id=>{if(c[id]!==undefined)$(id).value=c[id];});syncLabels();scheduleRegen();}
 function loadPresets(){
   try{return JSON.parse(localStorage.getItem(PKEY))||{};}catch(e){return {};}
 }
@@ -572,16 +577,13 @@ function savePreset(){
   const name=$('presetName').value.trim();
   if(!name){$('presetName').placeholder='⚠ Donne un nom au preset';return;}
   const ps=loadPresets();
-  ps[name]={};CTL_IDS.forEach(id=>ps[name][id]=$(id).value);
+  ps[name]=currentGrade();
   localStorage.setItem(PKEY,JSON.stringify(ps));
   $('presetName').value='';refreshPresetList();$('presetList').value=name;
 }
 function applyPreset(){
   const name=$('presetList').value;if(!name)return;
-  const ps=loadPresets();if(!ps[name])return;
-  CTL_IDS.forEach(id=>{if(ps[name][id]!==undefined)$(id).value=ps[name][id];});
-  syncLabels();
-  if(refStats)generateLUT(+$('lutSize').value);
+  const ps=loadPresets();if(ps[name])setControls(ps[name]);
 }
 function deletePreset(){
   const name=$('presetList').value;if(!name)return;
@@ -590,8 +592,8 @@ function deletePreset(){
 }
 
 // ---------- Slots de looks A/B/C ----------
-const LOOK_SLOTS_KEY='cgt_look_slots_v1';
-const LOOK_ACTIVE_KEY='cgt_look_active_v1';
+const LOOK_SLOTS_KEY='cgt_look_slots_v4';
+const LOOK_ACTIVE_KEY='cgt_look_active_v4';
 const LOOK_SLOT_NAMES=['A','B','C'];
 let activeLookSlot=null;
 function loadLookSlots(){
@@ -614,7 +616,7 @@ function updateLookSlotUI(){
 }
 function captureLookSlot(name){
   const slots=loadLookSlots();
-  slots[name]={version:1,date:new Date().toISOString(),controls:currentGrade()};
+  slots[name]={version:4,date:new Date().toISOString(),controls:currentGrade()};
   saveLookSlots(slots);
   try{localStorage.setItem(LOOK_ACTIVE_KEY,name);}catch(e){}
   activeLookSlot=name;
@@ -623,37 +625,24 @@ function captureLookSlot(name){
 function applyLookSlot(name){
   const entry=loadLookSlots()[name];
   if(!entry||!entry.controls){alert('Le slot '+name+' est vide. Capture d’abord le grade courant.');return;}
-  CTL_IDS.forEach(id=>{if(entry.controls[id]!==undefined)$(id).value=entry.controls[id];});
   activeLookSlot=name;
   try{localStorage.setItem(LOOK_ACTIVE_KEY,name);}catch(e){}
-  syncLabels();
+  setControls(entry.controls);
   updateLookSlotUI();
-  if(refStats)generateLUT(+$('lutSize').value);
 }
 LOOK_SLOT_NAMES.forEach(name=>{
   $('saveLook'+name).addEventListener('click',()=>captureLookSlot(name));
   $('loadLook'+name).addEventListener('click',()=>applyLookSlot(name));
 });
-(function restoreLookSlots(){
-  const slots=loadLookSlots();
-  let saved=null;try{saved=localStorage.getItem(LOOK_ACTIVE_KEY);}catch(e){}
-  const first=saved&&slots[saved]&&slots[saved].controls?saved:LOOK_SLOT_NAMES.find(name=>slots[name]&&slots[name].controls);
-  if(first){
-    activeLookSlot=first;
-    CTL_IDS.forEach(id=>{if(slots[first].controls[id]!==undefined)$(id).value=slots[first].controls[id];});
-    syncLabels();
-  }
-  updateLookSlotUI();
-})();
 
 // ---------- Export / import presets JSON ----------
 function exportPreset(){
   const name=$('presetName').value.trim()||$('presetList').value||'preset';
-  const payload={version:1,name:name,date:new Date().toISOString(),controls:currentGrade()};
+  const payload={version:4,name:name,date:new Date().toISOString(),controls:currentGrade()};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);a.download='preset-'+Date.now()+'.json';a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 function importPresetFile(file){
   if(!file)return;
@@ -661,47 +650,13 @@ function importPresetFile(file){
   reader.onload=()=>{
     try{
       const payload=JSON.parse(reader.result);
-      const controls=payload.controls||payload;
-      CTL_IDS.forEach(id=>{if(controls[id]!==undefined)$(id).value=controls[id];});
+      setControls(payload.controls||payload);
       if(payload.name)$('presetName').value=payload.name;
-      syncLabels();
-      if(refStats)generateLUT(+$('lutSize').value);
     }catch(e){alert('Preset JSON invalide.');}
   };
   reader.readAsText(file);
 }
 
-$('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});
-
-// ---------- Wiring ----------
-setupDrop('dropRef',img=>{
-  refImg=img;
-  refStats=analyze(img,roiState.ref);
-  refStats.transfer=null;
-  showStats(refStats);
-  showPalette(img,roiState.ref);
-  const ir=$('imgRef');
-  ir.src=img.src;ir.style.display='block';
-  $('ringRef').style.display='none';
-  $('tagRef').style.display='block';
-  generateLUT(+$('lutSize').value);
-});
-setupDrop('dropPrev',img=>{
-  prevImg=img;
-  drawROI('prev');
-  if(!lut){
-    $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
-    $('baBefore').src=img.src;
-    const cv=$('cvPrev');cv.width=img.width;cv.height=img.height;
-    cv.getContext('2d').drawImage(img,0,0);
-    return;
-  }
-  renderPrev(img);
-});
-['intensity','sat','warm','crush','con','zSh','zShW','zMd','zMdW','zHi','zHiW','wSkin','wDetail','wExtreme'].forEach(id=>{
-  $(id).addEventListener('input',()=>{syncLabels();if(refStats)generateLUT(+$('lutSize').value);});
-});
-$('lutSize').addEventListener('change',()=>{if(refStats)generateLUT(+$('lutSize').value);});
 // ---------- Rapport de match PNG ----------
 function exportMatchReport(){
   const ref=$('imgRef'), graded=$('cvPrev');
@@ -723,10 +678,11 @@ function exportMatchReport(){
   c.fillStyle='#222228';c.fillRect(pad,112,panelW,panelH);c.fillRect(pad+panelW+gap,112,panelW,panelH);
   contain(ref,pad,112,panelW,panelH);contain(graded,pad+panelW+gap,112,panelW,panelH);
   c.fillStyle='#fff';c.font='700 20px system-ui';c.fillText('RÉFÉRENCE',pad+18,145);c.fillText('RUSH GRADÉ',pad+panelW+gap+18,145);
-  c.fillStyle='#f4f1ea';c.font='700 24px system-ui';c.fillText('Score ΔE CIEDE2000 : '+($('deNum').textContent||'—'),pad,682);
+  c.fillStyle='#f4f1ea';c.font='700 24px system-ui';c.fillText('Score ΔE2000 par zone : '+($('deNum').textContent||'—'),pad,682);
   c.fillStyle='#bdb9b2';c.font='16px system-ui';
   const interpretation=$('deTxt').innerText.replace(/\n+/g,' ');c.fillText(interpretation.slice(0,112),pad,712);c.fillText(interpretation.slice(112,224),pad,737);
-  const settings=['Intensité '+$('intensity').value+'%','Saturation '+$('sat').value+'%','Chaleur '+$('warm').value,'Crush '+$('crush').value,'Contraste '+$('con').value+'%','LUT '+$('lutSize').value+'³','Preset '+($('presetList').value||'—')];
+  const g=currentGrade();
+  const settings=['Intensité '+g.intensity+'%','Lumière réf '+g.matchLum+'%','Couleur réf '+g.matchCol+'%','Saturation '+g.sat+'%','Contraste '+g.con+'%','Chaleur '+g.warm,'Teinte '+g.tint,'Noirs '+(g.crush-50),'LUT '+$('lutSize').value+'³'];
   c.fillStyle='#f4f1ea';c.font='700 18px system-ui';c.fillText('Réglages actuels',pad,787);
   c.fillStyle='#bdb9b2';c.font='16px system-ui';c.fillText(settings.join('  ·  '),pad,814);
   c.fillStyle='#f4f1ea';c.font='700 18px system-ui';c.fillText('Palette dominante',pad,864);
@@ -736,65 +692,68 @@ function exportMatchReport(){
   cv.toBlob(blob=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rapport-match-'+Date.now()+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);},'image/png');
 }
 
+// ---------- Wiring ----------
+setupDrop('dropRef',img=>{
+  refImg=img;refSamplesCache=null;
+  const ir=$('imgRef');
+  ir.src=img.src;ir.style.display='block';
+  $('ringRef').style.display='none';
+  $('tagRef').style.display='block';
+  refreshAnalysis();
+});
+setupDrop('dropPrev',img=>{
+  prevImg=img;
+  drawROI('prev');
+  refreshSource();
+  renderPrev(img);
+});
+$('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});
+CTL_IDS.forEach(id=>$(id).addEventListener('input',()=>{syncLabels();scheduleRegen();}));
+$('lutSize').addEventListener('change',scheduleRegen);
+function resetControls(){setControls(CTL_DEFAULTS);}
+function runAutoMatch(){
+  if(!refImg||!prevImg){alert('Charge une référence et une frame de rush.');return false;}
+  resetControls();return true;
+}
 $('btnDl').addEventListener('click',download);
 $('btnReport').addEventListener('click',exportMatchReport);
-function runAutoMatch(){
-  if(!refStats){alert('Charge une référence avant le match auto.');return false;}
-  const frameStats=prevImg?buildTransferFromImage(prevImg,roiState.prev):null;
-  if(frameStats){
-    refStats.transfer=buildOKLabTransfer(refStats.oklab,frameStats);
-  }else{
-    refStats.transfer=null;
-  }
-  const range=Math.max(0.001,refStats.p95-refStats.p5);
-  $('warm').value=Math.round(clamp((refStats.meanR-refStats.meanB)*150,-100,100));
-  $('con').value=Math.round(clamp(100*range/.73,50,150));
-  $('sat').value=Math.round(clamp(100*(refStats.sat/.5),0,200));
-  $('crush').value=Math.round(clamp(50*(1-refStats.p1/.08),0,100));
-  syncLabels();
-  generateLUT(+$('lutSize').value);
-  return true;
-}
 $('btnAuto').addEventListener('click',runAutoMatch);
-$('btnReset').addEventListener('click',()=>{
-  $('intensity').value=100;$('sat').value=100;$('warm').value=0;$('crush').value=50;$('con').value=100;
-  ['zSh','zShW','zMd','zMdW','zHi','zHiW'].forEach(id=>$(id).value=0);
-  syncLabels();
-  if(refStats)generateLUT(+$('lutSize').value);
-});
+$('btnReset').addEventListener('click',resetControls);
 $('btnSave').addEventListener('click',savePreset);
 $('btnLoad').addEventListener('click',applyPreset);
 $('btnDel').addEventListener('click',deletePreset);
 $('btnExportPreset').addEventListener('click',exportPreset);
 $('btnImportPreset').addEventListener('click',()=>$('presetFile').click());
 $('presetFile').addEventListener('change',e=>{importPresetFile(e.target.files[0]);e.target.value='';});
-loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');drawROI('prev');$('btnRoi').addEventListener('click',toggleROIMode);$('btnRoiReset').addEventListener('click',()=>{roiState={ref:null,prev:null};saveROI();drawROI('ref');drawROI('prev');roiLabel();if(refImg)refreshAnalysis();if(prevImg&&lut)renderPrev(prevImg);});roiLabel();syncLabels();refreshPresetList();
-
+loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');drawROI('prev');$('btnRoi').addEventListener('click',toggleROIMode);$('btnRoiReset').addEventListener('click',()=>{roiState={ref:null,prev:null};saveROI();drawROI('ref');drawROI('prev');roiLabel();refSamplesCache=null;if(refImg)refreshAnalysis();if(prevImg)refreshSource();});roiLabel();syncLabels();refreshPresetList();
+(function restoreLookSlots(){
+  let saved=null;try{saved=localStorage.getItem(LOOK_ACTIVE_KEY);}catch(e){}
+  if(saved&&loadLookSlots()[saved])activeLookSlot=saved;
+  updateLookSlotUI();
+})();
 
 // ---------- Mode expert persistant ----------
 (function(){
   const toggle=$('modeExpert');
   if(!toggle)return;
   const key='cgt_expert_mode_v1';
-  const saved=localStorage.getItem(key)==='1';
+  let saved=false;try{saved=localStorage.getItem(key)==='1';}catch(e){}
   toggle.checked=saved;
   document.body.classList.toggle('expert-mode',saved);
   toggle.addEventListener('change',function(){
     const enabled=toggle.checked;
     document.body.classList.toggle('expert-mode',enabled);
-    localStorage.setItem(key,enabled?'1':'0');
+    try{localStorage.setItem(key,enabled?'1':'0');}catch(e){}
   });
 })();
 
 (function(){
-  const fire=id=>{const el=document.getElementById(id);if(el)el.click();};
-  const set=(id,v)=>{const el=document.getElementById(id);if(el){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));}};
   document.querySelectorAll('[data-simple-action]').forEach(btn=>btn.addEventListener('click',function(){
     const a=this.dataset.simpleAction;
     if(a==='auto'){runAutoMatch();return;}
-    if(a==='reset'){fire('btnReset');return;}
-    if(a==='warm'){set('sat',108);set('warm',28);set('con',104);return;}
-    if(a==='cool'){set('sat',104);set('warm',-28);set('con',102);return;}
-    if(a==='cinema'){set('sat',104);set('crush',67);set('con',116);return;}
+    if(a==='reset'){resetControls();return;}
+    if(a==='warm'){setControls({warm:30,tint:0});return;}
+    if(a==='cool'){setControls({warm:-30,tint:0});return;}
+    if(a==='cinema'){setControls({con:115,crush:68});return;}
   }));
 })();
