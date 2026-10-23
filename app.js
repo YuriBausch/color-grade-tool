@@ -118,7 +118,7 @@ function addRushFiles(files){
 }
 function updateRushCount(){
   const n=rushImgs.length;
-  $('rushCount').textContent=n?(n+' rush'+(n>1?'s':'')+' additionnel'+(n>1?'s':'')+' inclus dans le match'):'Aucun rush additionnel';
+  $('rushCount').textContent=n?(n+' frame'+(n>1?'s':'')+' additionnelle'+(n>1?'s':'')+' dans l\'analyse'):'Aucune frame additionnelle';
 }
 
 function setupDrop(dropId,cb){
@@ -256,6 +256,22 @@ function applyCurve(t,x){const v=clamp(x,0,1)*TONE_N,i=Math.min(Math.floor(v),TO
 
 function rebuildMatch(){
   match=(refModel&&srcModel)?{ref:refModel,src:srcModel,tone:buildToneCurve(srcModel,refModel),pivot:quant(refModel.q,0.5)}:null;
+  updateUI();
+}
+
+// ---------- États de l'interface (progression, verrouillage) ----------
+let exported=false;
+function updateUI(){
+  const hasRef=!!refImg,hasRush=!!prevImg,ready=!!match;
+  document.body.classList.toggle('has-ref',hasRef);
+  document.body.classList.toggle('has-rush',hasRush);
+  document.body.classList.toggle('ready',ready);
+  const st=(id,done,cur)=>{const el=$(id);if(!el)return;el.classList.toggle('is-done',done);el.classList.toggle('is-current',!done&&cur);};
+  st('stepRef',hasRef,true);
+  st('stepRush',hasRush,hasRef);
+  st('stepTune',ready&&exported,ready);
+  st('stepExport',ready&&exported,ready);
+  $('btnDl').disabled=!ready;$('btnReport').disabled=!ready;
 }
 
 // ---------- Réglages ----------
@@ -379,7 +395,7 @@ function buildPalette(img,k,roi){
 function showPalette(img,roi){
   const pal=buildPalette(img,6,roi);
   const el=$('palette');
-  el.innerHTML=pal.map(s=>`<div class="swatch" style="background:${s.hex}" title="${s.hex} — ${s.pct.toFixed(1)}%"><em>${s.pct.toFixed(0)}%</em><span>${s.hex}</span></div>`).join('');
+  el.innerHTML=pal.map(s=>`<div class="swatch" style="background:${s.hex};flex:${Math.max(s.pct,4).toFixed(1)}" title="${s.hex} — ${s.pct.toFixed(1)}%"><em>${s.pct.toFixed(0)}%</em><span>${s.hex}</span></div>`).join('');
   el.style.display='flex';$('paletteTitle').style.display='block';
 }
 
@@ -420,19 +436,21 @@ function matchScore(a,b){
   for(let i=0;i<3;i++){const x=ok2lab(za[i]),y=ok2lab(zb[i]);s+=deltaE2000(x[0],x[1],x[2],y[0],y[1],y[2]);}
   return s/3;
 }
-let refSamplesCache=null;
+let refSamplesCache=null,lastDE=null;
 function showDE(before,after){
   const box=$('deBox');
   box.classList.remove('descore--ok','descore--warn','descore--bad');
-  let cls,txt;
-  const head='<b>ΔE '+fmt(after,1)+' — ';
-  const tail='</b><br>Écart moyen réf ↔ rush gradé (ombres, tons moyens, hautes lumières). Avant grading : ΔE '+fmt(before,1)+'.';
-  if(after<3){cls='descore--ok';txt=head+'Très proche de la référence 🟢'+tail;}
-  else if(after<6){cls='descore--warn';txt=head+'Proche, affine avec les zones 🟡'+tail;}
-  else{cls='descore--bad';txt=head+'Écart encore net 🔴'+tail+' Si les contenus sont très différents, utilise la zone de match pour cibler des éléments comparables.';}
-  box.classList.add(cls);
-  $('deNum').textContent=fmt(after,1);
-  $('deTxt').innerHTML=txt;
+  let cls,title,advice;
+  if(after<3){cls='descore--ok';title='Très proche de la référence';advice='Tu peux exporter, ou affiner à l\'œil avec les retouches.';}
+  else if(after<6){cls='descore--warn';title='Proche de la référence';advice='Affine avec les retouches ou les zones de luminosité.';}
+  else{cls='descore--bad';title='Encore éloigné de la référence';advice='Si les contenus sont très différents, dessine une zone de match sur des éléments comparables.';}
+  box.classList.add(cls,'has-score');
+  lastDE=after;
+  $('deNum').innerHTML=fmt(after,1)+'<small>ΔE · avant '+fmt(before,1)+'</small>';
+  $('deTxt').innerHTML='<b>'+title+'</b><br>'+advice+' <span style="color:var(--faint)">Le score compare les couleurs moyennes des ombres, tons moyens et lumières.</span>';
+  const pos=v=>clamp(v/12*100,1,99)+'%';
+  $('meterAfter').style.setProperty('--m',pos(after));
+  $('meterBefore').style.setProperty('--m',pos(before));
 }
 
 function syncLabels(){
@@ -449,6 +467,7 @@ function syncLabels(){
     $('vZ'+z).textContent=(+$('z'+z).value/100).toFixed(2);
     $('vZ'+z+'W').textContent=$('z'+z+'W').value;
   });
+  document.querySelectorAll('input[type=range]').forEach(r=>r.style.setProperty('--p',((r.value-r.min)/(r.max-r.min)*100)+'%'));
 }
 
 // ---------- Scopes : vectorscope + waveform RGB ----------
@@ -530,7 +549,7 @@ const ROI_KEY='cgt_match_roi_v1';
 let roiState={ref:null,prev:null},roiMode=false,roiDrag=null;
 function loadROI(){try{const v=JSON.parse(localStorage.getItem(ROI_KEY));if(v&&typeof v==='object')roiState={ref:v.ref||null,prev:v.prev||null};}catch(e){}}
 function saveROI(){try{localStorage.setItem(ROI_KEY,JSON.stringify(roiState));}catch(e){}}
-function roiLabel(){const r=roiState.prev||roiState.ref; $('roiStatus').textContent=roiMode?'Dessinez une zone sur l’image active · double-clic pour supprimer':(r?'ROI active · '+Math.round(r.w*100)+'×'+Math.round(r.h*100)+'%':'Mode inactif · ROI image entière');}
+function roiLabel(){const z=[roiState.ref&&'réf',roiState.prev&&'plan'].filter(Boolean);$('roiStatus').textContent=roiMode?'Trace un rectangle sur chaque image…':(z.length?'Zone active sur : '+z.join(' + '):'');$('btnRoi').textContent=roiMode?'✓ Terminer':'⌗ Dessiner une zone';}
 function drawROI(which){const r=roiState[which],el=$('roiOverlay'+(which==='ref'?'Ref':'Prev'));if(!el)return;el.style.display=r?'block':'none';if(r){el.style.setProperty('--rx',(r.x*100)+'%');el.style.setProperty('--ry',(r.y*100)+'%');el.style.setProperty('--rx2',((r.x+r.w)*100)+'%');el.style.setProperty('--ry2',((r.y+r.h)*100)+'%');}}
 let roiTimer=null;
 function setROI(which,r){roiState[which]=r;drawROI(which);saveROI();roiLabel();clearTimeout(roiTimer);roiTimer=setTimeout(()=>{if(which==='ref'){refSamplesCache=null;refreshAnalysis();}else refreshSource();},120);}
@@ -561,6 +580,7 @@ function download(){
   const blob=new Blob([lines.join('\n')+'\n'],{type:'text/plain'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='colour_grade_tool_match_'+S+'.cube';a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  exported=true;updateUI();
 }
 
 // ---------- Presets localStorage ----------
@@ -678,7 +698,7 @@ function exportMatchReport(){
   c.fillStyle='#222228';c.fillRect(pad,112,panelW,panelH);c.fillRect(pad+panelW+gap,112,panelW,panelH);
   contain(ref,pad,112,panelW,panelH);contain(graded,pad+panelW+gap,112,panelW,panelH);
   c.fillStyle='#fff';c.font='700 20px system-ui';c.fillText('RÉFÉRENCE',pad+18,145);c.fillText('RUSH GRADÉ',pad+panelW+gap+18,145);
-  c.fillStyle='#f4f1ea';c.font='700 24px system-ui';c.fillText('Score ΔE2000 par zone : '+($('deNum').textContent||'—'),pad,682);
+  c.fillStyle='#f4f1ea';c.font='700 24px system-ui';c.fillText('Score ΔE2000 par zone : '+(lastDE===null?'—':fmt(lastDE,1)),pad,682);
   c.fillStyle='#bdb9b2';c.font='16px system-ui';
   const interpretation=$('deTxt').innerText.replace(/\n+/g,' ');c.fillText(interpretation.slice(0,112),pad,712);c.fillText(interpretation.slice(112,224),pad,737);
   const g=currentGrade();
@@ -708,7 +728,10 @@ setupDrop('dropPrev',img=>{
   renderPrev(img);
 });
 $('rushFiles').addEventListener('change',e=>{addRushFiles(e.target.files);e.target.value='';});
-CTL_IDS.forEach(id=>$(id).addEventListener('input',()=>{syncLabels();scheduleRegen();}));
+CTL_IDS.forEach(id=>{
+  $(id).addEventListener('input',()=>{syncLabels();scheduleRegen();});
+  $(id).addEventListener('dblclick',()=>{$(id).value=CTL_DEFAULTS[id];syncLabels();scheduleRegen();});
+});
 $('lutSize').addEventListener('change',scheduleRegen);
 function resetControls(){setControls(CTL_DEFAULTS);}
 function runAutoMatch(){
@@ -725,7 +748,7 @@ $('btnDel').addEventListener('click',deletePreset);
 $('btnExportPreset').addEventListener('click',exportPreset);
 $('btnImportPreset').addEventListener('click',()=>$('presetFile').click());
 $('presetFile').addEventListener('change',e=>{importPresetFile(e.target.files[0]);e.target.value='';});
-loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');drawROI('prev');$('btnRoi').addEventListener('click',toggleROIMode);$('btnRoiReset').addEventListener('click',()=>{roiState={ref:null,prev:null};saveROI();drawROI('ref');drawROI('prev');roiLabel();refSamplesCache=null;if(refImg)refreshAnalysis();if(prevImg)refreshSource();});roiLabel();syncLabels();refreshPresetList();
+loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');drawROI('prev');$('btnRoi').addEventListener('click',toggleROIMode);$('btnRoiReset').addEventListener('click',()=>{roiState={ref:null,prev:null};saveROI();drawROI('ref');drawROI('prev');roiLabel();refSamplesCache=null;if(refImg)refreshAnalysis();if(prevImg)refreshSource();});roiLabel();syncLabels();refreshPresetList();updateUI();
 (function restoreLookSlots(){
   let saved=null;try{saved=localStorage.getItem(LOOK_ACTIVE_KEY);}catch(e){}
   if(saved&&loadLookSlots()[saved])activeLookSlot=saved;
