@@ -188,23 +188,33 @@ function buildModel(s){
   for(let i=0;i<=NQ;i++)q[i]=sorted[Math.round(i/NQ*(n-1))];
   const K=BANDS.length,w=new Float64Array(K);
   const sw=new Float64Array(K),swn=new Float64Array(K),na=new Float64Array(K),nb=new Float64Array(K),pa=new Float64Array(K),pb=new Float64Array(K);
-  const P=new Float32Array(n);
+  const P=new Float32Array(n),Cs=new Float32Array(n);
+  for(let i=0;i<n;i++)Cs[i]=Math.hypot(s.A[i],s.B[i]);
+  // Seuil de « neutre » relatif à l'image : un rush log est très peu saturé, et une
+  // grande zone colorée (fond vert…) ne doit pas passer pour un neutre.
+  const neutralC=clamp(Float32Array.from(Cs).sort()[n>>1],0.008,NEUTRAL_C);
   for(let i=0;i<n;i++){
-    const p=P[i]=percentileOf(q,s.L[i]),a=s.A[i],b=s.B[i],C=Math.hypot(a,b),wn=1/(1+(C/NEUTRAL_C)**2);
+    const p=P[i]=percentileOf(q,s.L[i]),a=s.A[i],b=s.B[i],wn=1/(1+(Cs[i]/neutralC)**2);
     bandWeights(p,w);
     for(let k=0;k<K;k++){const wk=w[k];sw[k]+=wk;swn[k]+=wk*wn;na[k]+=wk*wn*a;nb[k]+=wk*wn*b;pa[k]+=wk*a;pb[k]+=wk*b;}
   }
   // Dominante = moyenne robuste (pondérée vers les neutres), un peu tirée vers la moyenne brute
   const cast=[];for(let k=0;k<K;k++){
     const ma=sw[k]?pa[k]/sw[k]:0,mb=sw[k]?pb[k]/sw[k]:0,ra=swn[k]>1e-6?na[k]/swn[k]:ma,rb=swn[k]>1e-6?nb[k]/swn[k]:mb;
-    cast.push([ra*0.75+ma*0.25,rb*0.75+mb*0.25]);
+    cast.push([ra*0.9+ma*0.1,rb*0.9+mb*0.1]);
   }
-  const sv=new Float64Array(K);
+  // Étendue chromatique = médiane pondérée des distances à la dominante (histogramme) :
+  // une zone très saturée qui n'existe que dans une image ne fausse plus la saturation.
+  const NB=600,DMAX=0.3,hist=new Float64Array(K*NB);
   for(let i=0;i<n;i++){
     bandWeights(P[i],w);
-    for(let k=0;k<K;k++){const da=s.A[i]-cast[k][0],db=s.B[i]-cast[k][1];sv[k]+=w[k]*(da*da+db*db);}
+    for(let k=0;k<K;k++){const d=Math.hypot(s.A[i]-cast[k][0],s.B[i]-cast[k][1]);hist[k*NB+Math.min(NB-1,Math.floor(d/DMAX*NB))]+=w[k];}
   }
-  const spread=[];for(let k=0;k<K;k++)spread.push(Math.sqrt(sw[k]?sv[k]/sw[k]:0));
+  const spread=[];for(let k=0;k<K;k++){
+    let acc=0,half=sw[k]/2,j=0;
+    while(j<NB-1&&acc+hist[k*NB+j]<half){acc+=hist[k*NB+j];j++;}
+    const hb=hist[k*NB+j];spread.push((j+(hb>0?(half-acc)/hb:0.5))*DMAX/NB);
+  }
   let cm=0;for(let i=0;i<n;i++)cm+=Math.hypot(s.A[i],s.B[i]);
   return {q,cast,spread,n,meanC:cm/n};
 }
@@ -262,7 +272,7 @@ function baseMatch(m,L0,a0,b0,w){
   for(let i=0;i<BANDS.length;i++){
     sa+=w[i]*m.src.cast[i][0];sb+=w[i]*m.src.cast[i][1];
     ra+=w[i]*m.ref.cast[i][0];rb+=w[i]*m.ref.cast[i][1];
-    k+=w[i]*clamp(m.ref.spread[i]/Math.max(m.src.spread[i],0.004),0.35,2.5);
+    k+=w[i]*clamp(m.ref.spread[i]/Math.max(m.src.spread[i],0.003),0.3,5);
   }
   return [L,(a0-sa)*k+ra,(b0-sb)*k+rb];
 }

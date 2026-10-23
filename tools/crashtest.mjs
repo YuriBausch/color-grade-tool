@@ -34,6 +34,7 @@ const ctx = vm.createContext({
   document, console, Math, JSON, Float32Array, Float64Array, Uint8ClampedArray, Uint32Array, Set, Map,
   window: { addEventListener() {}, scrollTo() {} },
   localStorage: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
+  fetch: () => Promise.resolve({ ok: false }), location: { href: 'http://localhost/' }, URL,
   requestAnimationFrame: () => 0, setTimeout: () => 0, clearTimeout() {}, alert() {}, Event: class {}, MouseEvent: class {}, KeyboardEvent: class {},
 });
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8'), ctx, { filename: 'app.js' });
