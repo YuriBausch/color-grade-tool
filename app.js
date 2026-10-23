@@ -518,7 +518,7 @@ function drawScopes(d){
 // ---------- Rendu de la prévisualisation ----------
 function renderPrev(img){
   const cv=$('cvPrev');
-  const scale=Math.min(1,1280/img.width);
+  const scale=Math.min(1,(focusMode?1920:1280)/img.width);
   cv.width=Math.max(1,Math.round(img.width*scale));
   cv.height=Math.max(1,Math.round(img.height*scale));
   $('baEmpty').style.display='none';$('baPrev').style.display='block';$('tagPrev').style.display='block';
@@ -527,21 +527,45 @@ function renderPrev(img){
   const ctx=cv.getContext('2d',{willReadFrequently:true});
   ctx.drawImage(img,0,0,cv.width,cv.height);
   if(!lut)return;
-  const id=ctx.getImageData(0,0,cv.width,cv.height),d=id.data;
-  const raw=okSamples(d,4);
-  for(let i=0;i<d.length;i+=4){
-    const q=lutTetra(d[i]/255,d[i+1]/255,d[i+2]/255);
-    d[i]=q[0]*255+0.5;d[i+1]=q[1]*255+0.5;d[i+2]=q[2]*255+0.5;
-  }
+  const id=ctx.getImageData(0,0,cv.width,cv.height);
+  applyLutRGBA(id.data);
   ctx.putImageData(id,0,0);
-  if(refImg){
-    const crop=c=>{const r=roiState.prev;if(!r)return c;const t=document.createElement('canvas');t.width=Math.max(1,Math.round(r.w*c.width));t.height=Math.max(1,Math.round(r.h*c.height));t.getContext('2d').drawImage(c,r.x*c.width,r.y*c.height,r.w*c.width,r.h*c.height,0,0,t.width,t.height);return t;};
-    if(!refSamplesCache)refSamplesCache=imagesSamples([refImg],roiState.ref);
-    const after=roiState.prev?okSamples(sampleImg(crop(cv)).data):okSamples(d,4);
-    const beforeS=roiState.prev?imagesSamples([img],roiState.prev):raw;
-    showDE(matchScore(refSamplesCache,beforeS),matchScore(refSamplesCache,after));
+  // score + scopes : coûteux, recalculés seulement quand l'utilisateur s'arrête
+  clearTimeout(scoreTimer);scoreTimer=setTimeout(()=>updateScoreAndScopes(img),180);
+}
+let scoreTimer=null,beforeCache={key:null,value:0};
+function updateScoreAndScopes(img){
+  const cv=$('cvPrev');
+  if(refImg&&lut){
+    if(!refSamplesCache){refSamplesCache=imagesSamples([refImg],roiState.ref);beforeCache.key=null;}
+    const key=img.src+'|'+JSON.stringify(roiState);
+    if(beforeCache.key!==key)beforeCache={key,value:matchScore(refSamplesCache,imagesSamples([img],roiState.prev))};
+    showDE(beforeCache.value,matchScore(refSamplesCache,imagesSamples([cv],roiState.prev)));
   }
   drawScopes(cv);
+}
+// Application de la LUT sur un buffer RGBA 8 bits (tétraédrique, sans allocation par pixel)
+function applyLutRGBA(d){
+  const S=lut.size,D=lut.data,S1=S-1,f=S1/255,SS=S*S;
+  for(let p=0;p<d.length;p+=4){
+    const x=d[p]*f,y=d[p+1]*f,z=d[p+2]*f;
+    const i0=Math.min(x|0,S-2),j0=Math.min(y|0,S-2),k0=Math.min(z|0,S-2);
+    const fx=x-i0,fy=y-j0,fz=z-k0;
+    const c000=(k0*SS+j0*S+i0)*3,c111=c000+(SS+S+1)*3;
+    let w0,w1,w2,w3,A,B;
+    if(fx>fy){
+      if(fy>fz){w0=1-fx;w1=fx-fy;w2=fy-fz;w3=fz;A=c000+3;B=c000+(S+1)*3;}
+      else if(fx>fz){w0=1-fx;w1=fx-fz;w2=fz-fy;w3=fy;A=c000+3;B=c000+(SS+1)*3;}
+      else{w0=1-fz;w1=fz-fx;w2=fx-fy;w3=fy;A=c000+SS*3;B=c000+(SS+1)*3;}
+    }else{
+      if(fz>fy){w0=1-fz;w1=fz-fy;w2=fy-fx;w3=fx;A=c000+SS*3;B=c000+(SS+S)*3;}
+      else if(fz>fx){w0=1-fy;w1=fy-fz;w2=fz-fx;w3=fx;A=c000+S*3;B=c000+(SS+S)*3;}
+      else{w0=1-fy;w1=fy-fx;w2=fx-fz;w3=fz;A=c000+S*3;B=c000+(S+1)*3;}
+    }
+    d[p]=(w0*D[c000]+w1*D[A]+w2*D[B]+w3*D[c111])*255+0.5;
+    d[p+1]=(w0*D[c000+1]+w1*D[A+1]+w2*D[B+1]+w3*D[c111+1])*255+0.5;
+    d[p+2]=(w0*D[c000+2]+w1*D[A+2]+w2*D[B+2]+w3*D[c111+2])*255+0.5;
+  }
 }
 
 // ---------- ROI dessinable, persistante et partagée par l’analyse ----------
@@ -719,6 +743,7 @@ setupDrop('dropRef',img=>{
   ir.src=img.src;ir.style.display='block';
   $('ringRef').style.display='none';
   $('tagRef').style.display='block';
+  $('pipRef').src=img.src;updatePip();
   refreshAnalysis();
 });
 setupDrop('dropPrev',img=>{
@@ -754,6 +779,26 @@ loadROI();bindROI('ref','roiStageRef');bindROI('prev','baPrev');drawROI('ref');d
   if(saved&&loadLookSlots()[saved])activeLookSlot=saved;
   updateLookSlotUI();
 })();
+
+// ---------- Preview agrandie (F) + référence en incrustation (R) ----------
+let focusMode=false,pipOn=true;
+function updatePip(){$('pipRef').hidden=!(focusMode&&pipOn&&refImg);$('btnPip').classList.toggle('active',pipOn);}
+function setFocus(on){
+  focusMode=on;document.body.classList.toggle('focus',on);
+  $('btnFocus').textContent=on?'⤡ Réduire':'⤢ Agrandir';
+  updatePip();
+  if(prevImg)renderPrev(prevImg);
+  if(on)window.scrollTo({top:0});
+}
+$('btnFocus').addEventListener('click',()=>setFocus(!focusMode));
+$('btnPip').addEventListener('click',()=>{pipOn=!pipOn;updatePip();});
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey||/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)&&e.target.type!=='range')return;
+  const k=e.key.toLowerCase();
+  if(k==='f'&&prevImg){e.preventDefault();setFocus(!focusMode);}
+  else if(k==='escape'&&focusMode)setFocus(false);
+  else if(k==='r'&&focusMode){pipOn=!pipOn;updatePip();}
+});
 
 // ---------- Mode expert persistant ----------
 (function(){
