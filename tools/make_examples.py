@@ -84,7 +84,7 @@ SHOWCASE = [
     ("08_3a", "final", "ref", "Atelier sombre"),
     ("05_1a", "slog3", "rush", "Rue · S-Log3"),
     ("01_2a", "logc3", "rush", "Pont · LogC3"),
-    ("04_2a", "slog3", "rush", "Intérieur · S-Log3"),
+    ("04_5a", "slog3", "rush", "Console · S-Log3"),
     ("02_3a", "logc3", "rush", "Machine · LogC3"),
 ]
 for old in web.glob("tos_*.jpg"): old.unlink()
