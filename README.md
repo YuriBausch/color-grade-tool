@@ -23,7 +23,7 @@ Pour un rush dont le contenu diffère beaucoup de la réf : dessinez une **zone 
 Tout se passe en OKLab :
 
 1. **Luminance** — courbe de tonalité paramétrique : noirs (P1) et blancs (P99) de la référence, contraste des tons moyens de la référence (rapport des écarts interquartiles), exposition déplacée aux 3/4 vers celle de la référence. On copie le look sans recopier le contenu de la réf (pentes bornées, spline Fritsch–Carlson).
-2. **Couleur** — 5 bandes tonales en percentile (ombres → hautes lumières). Pour chacune : dominante (moyenne robuste pondérée vers les pixels neutres) et étendue chromatique. Chaque pixel est recentré sur la dominante du rush, rescalé en chroma, puis replacé sur la dominante de la référence.
+2. **Couleur** — 5 bandes tonales en percentile (ombres → hautes lumières). Pour chacune : dominante (moyenne robuste pondérée vers les pixels neutres) et étendue chromatique. Chaque pixel est recentré sur la dominante du rush, transformé par une matrice 2×2 (moitié gain de saturation, moitié transport linéaire Monge–Kantorovich entre les distributions (a,b) du rush et de la réf, qui sait tourner les teintes et saturer selon une direction), puis replacé sur la dominante de la référence.
 3. **Trims manuels** appliqués après le match.
 4. **Gamut mapping** : réduction du chroma à teinte/luminance constantes au lieu d'un clip par canal.
 

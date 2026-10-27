@@ -215,8 +215,20 @@ function buildModel(s){
     while(j<NB-1&&acc+hist[k*NB+j]<half){acc+=hist[k*NB+j];j++;}
     const hb=hist[k*NB+j];spread.push((j+(hb>0?(half-acc)/hb:0.5))*DMAX/NB);
   }
+  // Covariance (a,b) par bande autour de la dominante, robuste (poids de Huber : les zones
+  // très saturées au-delà de 2,5× l'étendue médiane pèsent moins).  Sert au modèle MKL.
+  const cv=[];for(let k=0;k<K;k++)cv.push([0,0,0,0]);
+  for(let i=0;i<n;i++){
+    bandWeights(P[i],w);
+    for(let k=0;k<K;k++){
+      const da=s.A[i]-cast[k][0],db=s.B[i]-cast[k][1],d=Math.hypot(da,db);
+      const wr=w[k]*Math.min(1,2.5*Math.max(spread[k],1e-3)/Math.max(d,1e-9)),c=cv[k];
+      c[0]+=wr*da*da;c[1]+=wr*da*db;c[2]+=wr*db*db;c[3]+=wr;
+    }
+  }
+  const cov=cv.map(c=>c[3]?[c[0]/c[3],c[1]/c[3],c[2]/c[3]]:[1e-6,0,1e-6]);
   let cm=0;for(let i=0;i<n;i++)cm+=Math.hypot(s.A[i],s.B[i]);
-  return {q,cast,spread,n,meanC:cm/n};
+  return {q,cast,spread,cov,n,meanC:cm/n};
 }
 
 // ---------- Spline monotone (Fritsch–Carlson) ----------
@@ -276,13 +288,39 @@ function applyCurve(t,x){const v=clamp(x,0,1)*TONE_N,i=Math.min(Math.floor(v),TO
 function baseMatch(m,L0,a0,b0,w){
   const L=applyCurve(m.tone,L0);
   bandWeights(percentileOf(m.src.q,L0),w);
-  let sa=0,sb=0,ra=0,rb=0,k=0;
+  let sa=0,sb=0,ra=0,rb=0,t0=0,t1=0,t2=0,t3=0;
   for(let i=0;i<BANDS.length;i++){
     sa+=w[i]*m.src.cast[i][0];sb+=w[i]*m.src.cast[i][1];
     ra+=w[i]*m.ref.cast[i][0];rb+=w[i]*m.ref.cast[i][1];
-    k+=w[i]*clamp(m.ref.spread[i]/Math.max(m.src.spread[i],0.003),0.3,5);
+    const T=m.T[i];t0+=w[i]*T[0];t1+=w[i]*T[1];t2+=w[i]*T[2];t3+=w[i]*T[3];
   }
-  return [L,(a0-sa)*k+ra,(b0-sb)*k+rb];
+  const da=a0-sa,db=b0-sb;
+  return [L,t0*da+t1*db+ra,t2*da+t3*db+rb];
+}
+
+// ---------- Transformation couleur par bande (MKL, Monge–Kantorovich linéaire) ----------
+// Matrice 2×2 qui envoie la distribution (a,b) du rush sur celle de la réf : elle sait
+// tourner les teintes et saturer plus dans une direction que dans l'autre (teal/orange…).
+// Mélangée à 50 % avec le simple gain de saturation, plus robuste quand les contenus
+// diffèrent (crash tests : erreur couleur −9 %).  Matrices [xx,xy,yy] symétriques / [a,b,c,d].
+const COLOR_MKL=0.5;
+function sqrtSym(S){const [x,y,z]=S,s=Math.sqrt(Math.max(x*z-y*y,1e-14)),t=Math.sqrt(x+z+2*s);return [(x+s)/t,y/t,(z+s)/t];}
+function invSym(S){const [x,y,z]=S,det=Math.max(x*z-y*y,1e-14);return [z/det,-y/det,x/det];}
+function mul2(A,B){return [A[0]*B[0]+A[1]*B[2],A[0]*B[1]+A[1]*B[3],A[2]*B[0]+A[3]*B[2],A[2]*B[1]+A[3]*B[3]];}
+function full2(S){return [S[0],S[1],S[1],S[2]];}
+function mklMatrix(Cs,Cr){
+  const e=1e-6,Ss=full2(sqrtSym([Cs[0]+e,Cs[1],Cs[2]+e])),Si=full2(invSym([Ss[0],Ss[1],Ss[3]]));
+  const M=mul2(mul2(Ss,full2([Cr[0]+e,Cr[1],Cr[2]+e])),Ss);
+  return mul2(mul2(Si,full2(sqrtSym([M[0],(M[1]+M[2])/2,M[3]]))),Si);
+}
+function colorTransforms(src,ref){
+  return src.cov.map((Cs,k)=>{
+    const g=clamp(ref.spread[k]/Math.max(src.spread[k],0.003),0.3,5);
+    let T=mklMatrix(Cs,ref.cov[k]);
+    const f=Math.hypot(...T)/Math.SQRT2;   // même bornes que le gain scalaire
+    if(f>5)T=T.map(v=>v*5/f);else if(f>0&&f<0.3)T=T.map(v=>v*0.3/f);
+    return [g*(1-COLOR_MKL)+COLOR_MKL*T[0],COLOR_MKL*T[1],COLOR_MKL*T[2],g*(1-COLOR_MKL)+COLOR_MKL*T[3]];
+  });
 }
 
 // ---------- Points de couleur (pipette) ----------
@@ -307,7 +345,7 @@ function pinCorrection(pd,L0,a0,b0,out){
 }
 
 function rebuildMatch(){
-  match=(refModel&&srcModel)?{ref:refModel,src:srcModel,tone:buildToneCurve(srcModel,refModel),pivot:quant(refModel.q,0.5)}:null;
+  match=(refModel&&srcModel)?{ref:refModel,src:srcModel,tone:buildToneCurve(srcModel,refModel),T:colorTransforms(srcModel,refModel),pivot:quant(refModel.q,0.5)}:null;
   if(match)match.pins=pinDeltas(match);
   updateUI();
 }
