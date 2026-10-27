@@ -13,6 +13,12 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace
 const DATA = path.join(ROOT, 'testdata', 'tos_png');
 const PARTNER = { '01_2a': '05_1a', '05_1a': '01_2a', '04_2a': '04_5a', '04_5a': '02_3a', '02_3a': '04_5a', '04_2c': '08_3a', '08_3a': '04_2c' };
 const RUSHES = ['rec709', 'slog3', 'logc3'];
+// Visages repérés à la main sur les plans alignés : [x0, y0, x1, y1] en fraction de l'image
+const FACES = {
+  '01_2a': [[0.302, 0.125, 0.349, 0.24], [0.507, 0.175, 0.547, 0.275]],
+  '04_2a': [[0.135, 0.2, 0.198, 0.43], [0.667, 0.12, 0.73, 0.35]],
+  '05_1a': [[0.41, 0.16, 0.464, 0.345]],
+};
 
 // ---------- DOM factice : absorbe tout le câblage d'interface d'app.js ----------
 function stubEl() {
@@ -79,6 +85,19 @@ function pixelDE(a, b) {
   return s / n;
 }
 
+// ΔE moyen sur les pixels de peau des visages (filtrés par teinte dans l'image finale)
+function skinDE(out, truth, shot) {
+  const faces = FACES[shot]; if (!faces) return null;
+  let s = 0, n = 0;
+  for (const [x0, y0, x1, y1] of faces) for (let y = Math.floor(y0 * truth.h); y < y1 * truth.h; y++) for (let x = Math.floor(x0 * truth.w); x < x1 * truth.w; x++) {
+    const i = (y * truth.w + x) * 4, t = truth.d;
+    const lt = E.rgb2lab(E.LIN8[t[i]], E.LIN8[t[i + 1]], E.LIN8[t[i + 2]]), h = Math.atan2(lt[2], lt[1]) * 180 / Math.PI, C = Math.hypot(lt[1], lt[2]);
+    if (h < 15 || h > 95 || C < 6 || lt[0] < 15) continue; // cheveux, fond, ombres très sombres
+    const lo = E.rgb2lab(E.LIN8[out[i]], E.LIN8[out[i + 1]], E.LIN8[out[i + 2]]);
+    s += E.deltaE2000(...lo, ...lt); n++;
+  }
+  return n > 50 ? s / n : null;
+}
 function run(params, rushes = RUSHES) {
   const res = [];
   for (const m of manifest) for (const rk of rushes) for (const refShot of [m.shot, PARTNER[m.shot]]) {
@@ -89,6 +108,7 @@ function run(params, rushes = RUSHES) {
       shot: m.shot, rush: rk, refShot, vfx: !m.pixelAligned,
       zoneBefore: E.matchScore(E.okSamples(rush.d, 4), ts), zoneAfter: E.matchScore(E.okSamples(out, 4), ts),
       pixBefore: m.pixelAligned ? pixelDE(rush.d, truth.d) : null, pixAfter: m.pixelAligned ? pixelDE(out, truth.d) : null,
+      skinBefore: skinDE(rush.d, truth, m.shot), skinAfter: skinDE(out, truth, m.shot),
     });
   }
   return res;
@@ -101,6 +121,8 @@ function summary(res) {
     'réf même plan (ΔE zones)': `${f1(avg(same, r => r.zoneBefore))} → ${f1(avg(same, r => r.zoneAfter))}`,
     'réf autre plan (ΔE zones)': `${f1(avg(other, r => r.zoneBefore))} → ${f1(avg(other, r => r.zoneAfter))}`,
     'plans alignés (ΔE pixel)': `${f1(avg(al, r => r.pixBefore))} → ${f1(avg(al, r => r.pixAfter))}`,
+    'peau, même plan (ΔE)': `${f1(avg(same, r => r.skinBefore))} → ${f1(avg(same, r => r.skinAfter))}`,
+    'peau, autre plan (ΔE)': `${f1(avg(other, r => r.skinBefore))} → ${f1(avg(other, r => r.skinAfter))}`,
   };
 }
 
